@@ -1205,7 +1205,7 @@ function updateWingman(a,dt,time){
   const targetPitch=1.05*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
   a.fortressIntroPitch+=(targetPitch-a.fortressIntroPitch)*(1-Math.exp(-dt*3.0));
   // Match the transition into combat spacing to the final pull-up and turn.
-  if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/4.0);
+  if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/5.5);
   const baseBlend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
   const blend=Math.max(baseBlend,.9*Math.sin(Math.PI*a.fortressIntroTurn));
   a.fortressApproaching=a.fortressBlend<1;
@@ -1254,7 +1254,7 @@ function updateWingman(a,dt,time){
   a.pos[2]=Math.min(a.pos[2],pos[2]-(300-turnApproach));
   a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(dt,.0001));
   // Begin the heading change during the final part of the descent, not after it.
-  if(a.fortressIntroDescent>=.62)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/4.0);
+  if(a.fortressIntroDescent>=.62)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/5.5);
   const turnT=a.fortressIntroTurn;
   const turn=turnT*turnT*turnT*(turnT*(turnT*6-15)+10);
   const targetYaw=Math.PI*(1-turn);
