@@ -1358,7 +1358,7 @@ let gatlingAimTime=0;
 function updateGatlingAim(a){
  if(!a.gatling||a.destroyed)return;
  // Save the cannon's current intercept direction (position + inertial velocity).
- const current=cannonInterceptDirection(gatlingMount(a),610,pos,playerVelocity);
+ const current=cannonInterceptDirection(gatlingMount(a),610,pos,gatlingPredictVelocity);
  const history=a.gatlingAimHistory||(a.gatlingAimHistory=[]);
  history.push({t:gatlingAimTime,d:current});
  const targetTime=gatlingAimTime-GATLING_AIM_DELAY;
@@ -1420,7 +1420,7 @@ function aircraftModel(a){
  const rr=right.map((v,i)=>v*cr+up[i]*sr),uu=up.map((v,i)=>up[i]*cr-right[i]*sr);
  return [rr[0],rr[1],rr[2],0,uu[0],uu[1],uu[2],0,forward[0],forward[1],forward[2],0,a.pos[0],a.pos[1],a.pos[2],1];
 }
-function draw(m){gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,m.cb);gl.vertexAttribPointer(C,3,gl.FLOAT,false,0,0);gl.drawArrays(gl.TRIANGLES,0,m.n)}function norm(v){let l=Math.hypot(...v)||1;return v.map(x=>x/l)}function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]}function dot(a,b){return a.reduce((s,x,i)=>s+x*b[i],0)}function perspective(fov,asp,n,f){let t=1/Math.tan(fov/2);return[t/asp,0,0,0,0,t,0,0,0,0,(f+n)/(n-f),-1,0,0,2*f*n/(n-f),0]}function look(eye,target,up){let z=norm(eye.map((v,i)=>v-target[i])),x=norm(cross(up,z)),y=cross(z,x);return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]}function mul(a,b){let o=new Array(16).fill(0);for(let j=0;j<4;j++)for(let i=0;i<4;i++)for(let k=0;k<4;k++)o[j*4+i]+=a[k*4+i]*b[j*4+k];return o}let visualAim=[0,0,-1];let playerVelocity=[0,0,-435];let pos=[0,313.54,0],yaw=0,pitch=0,roll=0,joy=[0,0],smoothJoy=[0,0],cam=[0,339.54,43],last=performance.now(),previousCameraPlaneX=0,previousCameraPlaneY=313.54;
+function draw(m){gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,m.cb);gl.vertexAttribPointer(C,3,gl.FLOAT,false,0,0);gl.drawArrays(gl.TRIANGLES,0,m.n)}function norm(v){let l=Math.hypot(...v)||1;return v.map(x=>x/l)}function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]}function dot(a,b){return a.reduce((s,x,i)=>s+x*b[i],0)}function perspective(fov,asp,n,f){let t=1/Math.tan(fov/2);return[t/asp,0,0,0,0,t,0,0,0,0,(f+n)/(n-f),-1,0,0,2*f*n/(n-f),0]}function look(eye,target,up){let z=norm(eye.map((v,i)=>v-target[i])),x=norm(cross(up,z)),y=cross(z,x);return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]}function mul(a,b){let o=new Array(16).fill(0);for(let j=0;j<4;j++)for(let i=0;i<4;i++)for(let k=0;k<4;k++)o[j*4+i]+=a[k*4+i]*b[j*4+k];return o}let visualAim=[0,0,-1];let playerVelocity=[0,0,-435];let gatlingPredictVelocity=[0,0,-435];let pos=[0,313.54,0],yaw=0,pitch=0,roll=0,joy=[0,0],smoothJoy=[0,0],cam=[0,339.54,43],last=performance.now(),previousCameraPlaneX=0,previousCameraPlaneY=313.54;
 let shots=[],hitEffects=[],fireCooldown=0,hitCount=0,muzzleSide=1;const shotLayer=document.getElementById('shotLayer');
 const cannonWarningRing=document.createElement('div');
 cannonWarningRing.className='missileRing';
@@ -1720,6 +1720,9 @@ function frame(now){
  pos[1]=Math.max(250,Math.min(520,pos[1]+vy*easeY*dt));
  pos[2]+=(-speed+hitVZ)*dt;
  playerVelocity=[vx*easeX,vy*easeY,-speed+hitVZ];
+ // During an active swipe roll, exclude only its transient drift from Gatling lead prediction.
+ // Keep steering, auto movement, knockback, and forward speed unchanged.
+ gatlingPredictVelocity=dashing?[(vx-driftVX)*easeX,(vy-driftVY)*easeY,-speed+hitVZ]:playerVelocity;
  gatlingAimTime+=dt;
  const wantedRoll=dashing?0:-smoothJoy[0]*.52*easeX,wantedPitch=dashing?0:-smoothJoy[1]*.22*easeY;
  if(dashing){
