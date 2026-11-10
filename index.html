@@ -1353,7 +1353,7 @@ function cannonInterceptDirection(origin,shellSpeed=610,targetPos=pos,targetVelo
 }
 // Delay the *completed cannon aim*, not the inputs to its lead predictor.
 // The cannon solution uses the player's actual inertial world velocity.
-const GATLING_AIM_DELAY=0.5;
+const GATLING_AIM_DELAY=0.8;
 let gatlingAimTime=0;
 function updateGatlingAim(a){
  if(!a.gatling||a.destroyed)return;
