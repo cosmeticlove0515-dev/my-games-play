@@ -1889,6 +1889,38 @@ function frame(now){
     a.missileClock=MISSILE_INTERVAL-dt; // First randomized salvo starts as the markers appear.
    }
   }
+  if(a.fortress){
+   // Each of the four model-aligned launchers has its own burst timer and ammo count.
+   // Stagger the initial salvoes; thereafter each port runs its own randomized cycle.
+   if(!a.fortressLaunchers)a.fortressLaunchers=[0,1,2,3].map(i=>({
+    clock:MISSILE_INTERVAL-i*.7,remaining:0,burstClock:0,gap:MISSILE_BURST_GAP
+   }));
+   for(let port=0;port<4;port++){
+    const launcher=a.fortressLaunchers[port];
+    launcher.clock+=dt;
+    if(launcher.clock>=MISSILE_INTERVAL){
+     launcher.clock-=MISSILE_INTERVAL;
+     const rapidBurst=Math.random()<.05;
+     launcher.remaining=rapidBurst?8:1+Math.floor(Math.random()*3);
+     launcher.gap=rapidBurst?.2:MISSILE_BURST_GAP;
+     launcher.burstClock=launcher.gap;
+    }
+    if(launcher.remaining<=0)continue;
+    launcher.burstClock+=dt;
+    if(launcher.burstClock<launcher.gap)continue;
+    launcher.burstClock-=launcher.gap;
+    launcher.remaining--;
+    if(missiles.length>=MAX_MISSILES)continue;
+    const ring=document.createElement('div');ring.className='missileRing';shotLayer.appendChild(ring);
+    const launchPos=fortressMissileLaunchPosition(a,port);
+    const aim=pos.map((v,k)=>v-launchPos[k]);
+    const aimLength=Math.max(.001,Math.hypot(...aim));
+    const launchDirection=coneLimitedMissileVelocity(aim.map(v=>v/aimLength*MISSILE_SPEED));
+    const launchVelocity=launchDirection.map((v,k)=>v+(k===2?-speed:0));
+    missiles.push({ring,pos:launchPos,vel:launchVelocity,age:0,smokeClock:0,homingOff:false,hasClosed:false,lastDistance:aimLength});
+   }
+   continue;
+  }
   a.missileClock=(a.missileClock??0)+dt;
   if(a.missileClock>=MISSILE_INTERVAL){
    a.missileClock-=MISSILE_INTERVAL;
