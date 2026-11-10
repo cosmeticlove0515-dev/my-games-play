@@ -506,7 +506,7 @@ function renderWorldSmoke(pv,view){
 // Wingmen reuse the exact same aircraft mesh as the player.
 // Test setup: one three-aircraft formation only, with no subsequent spawns.
 // Mixed non-boss roster: standard, Gatling, cannon, kamikaze and formation.
-const wingmen=[{
+const wingmen=[/* Boss-only test: no initial ordinary fighter */
  kamikaze:false,kamikazePhase:'evade',kamikazeClock:0,kamikazeSide:1,kamikazeFlightVelocity:null,kamikazeMountainClimb:null,kamikazeEscapeDirection:null,kamikazeEscapeHold:0,kamikazeEdgeReverse:null,
  kamikazeDirection:norm([.85,.2,-.3]),kamikazeWanderPhase:Math.random()*Math.PI*2,
  kamikazePlayerZ:0,cannon:false,gatling:false,cannonWarningActive:false,
@@ -514,7 +514,7 @@ const wingmen=[{
  phase:0,lane:0,altitude:0,speed:405,skill:1,velocity:[0,0,-405],
  hp:24,destroyed:false,smokeClock:0,missileClock:0,burstRemaining:0,
  burstClock:0,burstGap:.3,gatlingAimHistory:[],gatlingElapsed:0
-}];
+}].filter(()=>false);
 const enemyMarkers=wingmen.map(()=>{const el=document.createElement('div');el.className='enemyMarker';document.getElementById('enemyMarkers').appendChild(el);return el;});
 const WEAPON_RANGE=750,ROCKET_RANGE=800;
 
@@ -1765,12 +1765,12 @@ function frame(now){
  const fwd=[0,0,-1];
  // Check for an additional aircraft every 4–8 seconds, never exceeding three active enemies.
  fortressSpawnClock+=dt;
- if(false&&!fortressHasSpawned&&fortressSpawnClock>=18){fortressHasSpawned=true;spawnFortress();}
+ if(!fortressHasSpawned&&fortressSpawnClock>=1){fortressHasSpawned=true;spawnFortress();}
  enemySpawnTimer=Math.min(enemySpawnTimer+dt,nextEnemySpawnInterval);
  // While any cannon fighter is alive, suspend ALL new enemy spawns.
  // Preserve the timer at its threshold so spawning resumes after the cannon is defeated.
  const activeCannon=wingmen.some(a=>!a.destroyed&&a.cannon);
- if(!activeCannon&&enemySpawnTimer>=nextEnemySpawnInterval){ // Resume standard enemy spawning (ordinary, cannon, formation)
+ if(false&&!activeCannon&&enemySpawnTimer>=nextEnemySpawnInterval){ // Resume standard enemy spawning (ordinary, cannon, formation)
   enemySpawnTimer-=nextEnemySpawnInterval;
   nextEnemySpawnInterval=ENEMY_SPAWN_INTERVAL_MIN+Math.random()*(ENEMY_SPAWN_INTERVAL_MAX-ENEMY_SPAWN_INTERVAL_MIN);
   const ordinary=wingmen.filter(a=>!a.destroyed&&!a.fortress&&!a.formation).length;
