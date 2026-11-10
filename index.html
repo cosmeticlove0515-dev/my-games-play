@@ -1205,7 +1205,8 @@ function updateWingman(a,dt,time){
   a.fortressIntroPitch=1.05*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
   // Match the transition into combat spacing to the final pull-up and turn.
   if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/4.0);
-  const blend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
+  const baseBlend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
+  const blend=Math.max(baseBlend,.9*Math.sin(Math.PI*a.fortressIntroTurn));
   a.fortressApproaching=a.fortressBlend<1;
   if(a.fortressMoveClock<=0){
    a.fortressMoveClock=3+Math.random()*2;
@@ -1215,13 +1216,13 @@ function updateWingman(a,dt,time){
   // During the entrance turn, move closer before easing back to normal combat range.
   const introTurnT=a.fortressIntroTurn;
   const introTurnEase=introTurnT*introTurnT*introTurnT*(introTurnT*(introTurnT*6-15)+10);
-  const turnApproach=110*Math.sin(Math.PI*introTurnEase);
+  const turnApproach=210*Math.sin(Math.PI*introTurnEase);
   // Lateral and vertical movement is independent of the player; only forward range tracks the player.
   const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-(a.fortressTargetOffset[2]-turnApproach)];
   const approach=[a.pos[0]+(a.fortressAnchor[0]-a.pos[0])*(1-Math.exp(-dt*.28)),
                   a.pos[1]+(a.fortressAnchor[1]+400*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
                   a.pos[2]-405*dt];
-  const holdFactor=1-Math.exp(-dt*.8);
+  const holdFactor=1-Math.exp(-dt*(.8+3.0*Math.sin(Math.PI*introTurnEase)));
   // Match the player's world displacement before easing the relative offset.
   // Without this feed-forward, the 435-unit/s camera scroll creates a huge
   // following error and eventually leaves the fortress behind the player.
