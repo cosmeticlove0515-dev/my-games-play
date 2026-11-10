@@ -1486,7 +1486,7 @@ function startRoll(nx,ny){
  // Carry the velocity immediately before the roll into its first 0.2 seconds.
  rollEntryVX=driftVX+lastAutoVX;rollEntryVY=driftVY+lastAutoVY;
  dashTime=dashDuration;rollTailElapsed=0;rollTail=0;
- dashVX=nx*(145*2/3)*1.5;dashVY=ny*(125*2/3)*1.5;
+ dashVX=nx*(145*2/3)*1.5*1.3;dashVY=ny*(125*2/3)*1.5*1.3;
  dashRoll=nx===0?0:-Math.sign(nx)*Math.PI*2;
  joy=[0,0];smoothJoy=[0,0];
 }
