@@ -653,7 +653,20 @@ function explodeEnemy(a){
  a.destroyed=true;a.respawnDelay=ENEMY_RESPAWN_DELAY;a.hp=0;a.smokeClock=0;destroyedCount++;
  // Four shared destruction patterns, equally likely for every ordinary enemy.
  // Fortress retains its existing dedicated explosion.
- if(a.fortress){spawnExplosion(a.pos,3.8);return;}
+ if(a.fortress){
+  // Boss uses existing pattern 2: intact model spins and falls, then explodes on ground.
+  spawnExplosion(a.pos,1);
+  fallingWrecks.push({
+   fortress:true,fortressIntroPitch:0,
+   pos:a.pos.slice(),yaw:a.yaw||0,roll:a.roll||0,
+   mesh:fortressPlane,age:0,smokeClock:0,pattern:2,
+   airburstAt:Infinity,
+   spin:(Math.random()<.5?-1:1)*(5+Math.random()*4),
+   yawSpin:(Math.random()<.5?-1:1)*(1.4+Math.random()*2),
+   vel:[(Math.random()-.5)*85,-35,Math.min(0,(a.velocity&&a.velocity[2])||-180)]
+  });
+  return;
+ }
  // Choose uniformly from the three patterns other than the last one.
  const draw=1+Math.floor(Math.random()*3);
  const pattern=lastEnemyCrashPattern===0?1+Math.floor(Math.random()*4):draw+(draw>=lastEnemyCrashPattern?1:0);
