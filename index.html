@@ -1446,6 +1446,13 @@ function kamikazeModel(a){
  const ry=y.map((v,k)=>v*cs-x[k]*sn);
  return [rx[0],rx[1],rx[2],0,ry[0],ry[1],ry[2],0,z[0],z[1],z[2],0,...a.pos,1];
 }
+// Four launch ports aligned to the existing red gun housings on the boss model.
+// Local coordinates are transformed by the same model matrix as the rendered aircraft.
+function fortressMissileLaunchPosition(a,remaining){
+ const ports=[[-36,8,-17],[36,8,-17],[-66,0,8],[66,0,8]];
+ const local=ports[remaining%ports.length],m=aircraftModel(a);
+ return [0,1,2].map(i=>m[12+i]+m[i]*local[0]+m[4+i]*local[1]+m[8+i]*local[2]);
+}
 function aircraftModel(a){
  if(a.kamikaze)return kamikazeModel(a);
  const cy=Math.cos(a.yaw),sy=Math.sin(a.yaw),cr=Math.cos(a.roll),sr=Math.sin(a.roll);
@@ -1900,7 +1907,7 @@ function frame(now){
     if(missiles.length<MAX_MISSILES){
     const ring=document.createElement('div');ring.className='missileRing';shotLayer.appendChild(ring);
     const launchPos=a.fortress?
-     [a.pos[0]+(a.burstRemaining%2?36:-36),a.pos[1]-8,a.pos[2]+12]:a.gatling?
+     fortressMissileLaunchPosition(a,a.burstRemaining):a.gatling?
      gatlingMount(a).map((v,k)=>v+(a.gatlingAim||[0,0,-1])[k]*36):
      [a.pos[0],a.pos[1]-2,a.pos[2]+12];
     const aim=pos.map((v,k)=>v-launchPos[k]);
