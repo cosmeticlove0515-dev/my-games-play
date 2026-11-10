@@ -1873,6 +1873,15 @@ function frame(now){
    a.gatlingElapsed=nextAbsolute;
    continue;
   }
+  // Match the fortress attack unlock to the exact stance condition used by its lock markers.
+  if(a.fortress){
+   const combatReady=a.fortressIntroTurn>=1&&Math.abs(a.fortressIntroPitch)<=.025&&Math.abs(a.yaw)<=.025;
+   if(!combatReady){a.missileClock=0;a.burstRemaining=0;continue;}
+   if(!a.fortressAttackUnlocked){
+    a.fortressAttackUnlocked=true;
+    a.missileClock=MISSILE_INTERVAL-dt; // First randomized salvo starts as the markers appear.
+   }
+  }
   a.missileClock=(a.missileClock??0)+dt;
   if(a.missileClock>=MISSILE_INTERVAL){
    a.missileClock-=MISSILE_INTERVAL;
