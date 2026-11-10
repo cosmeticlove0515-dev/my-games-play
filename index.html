@@ -1195,9 +1195,14 @@ function updateWingman(a,dt,time){
   // The blend starts near 470 units; no positional snap or instant velocity reversal.
   const distance=pos[2]-a.pos[2];
   // Descend from high above the frame, starting once the fortress approaches view.
-  if(distance<=850)a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/3.6);
-  const descent=a.fortressIntroDescent*a.fortressIntroDescent*(3-2*a.fortressIntroDescent);
-  a.fortressIntroPitch=.75*(1-descent);
+  if(distance<=850)a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/4.1);
+  // Ease the actual dive through a continuous acceleration and flare-out.
+  const diveT=a.fortressIntroDescent;
+  const descent=diveT*diveT*diveT*(diveT*(diveT*6-15)+10);
+  // Keep the nose down through the dive, then pull up gently as the aircraft levels.
+  const liftT=Math.max(0,Math.min(1,(descent-.12)/.88));
+  const lift=liftT*liftT*(3-2*liftT);
+  a.fortressIntroPitch=.75*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
   if(distance<=470)a.fortressBlend=Math.min(1,a.fortressBlend+dt/3.2);
   const blend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
   a.fortressApproaching=a.fortressBlend<1;
@@ -1224,14 +1229,17 @@ function updateWingman(a,dt,time){
   }
   a.pos[2]=Math.min(a.pos[2],pos[2]-300);
   a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(dt,.0001));
-  // Bank smoothly into lateral movement, without snapping at the approach/hold transition.
-  const lateralSpeed=a.velocity[0];
-  const desiredBank=Math.max(-.22,Math.min(.22,-lateralSpeed*.003));
-  a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*2.4));
-  // Face the player on arrival, then turn smoothly into the established combat heading.
-  if(a.fortressIntroDescent>=.72)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/3.2);
-  const turn=a.fortressIntroTurn*a.fortressIntroTurn*(3-2*a.fortressIntroTurn);
+  // Begin the heading change during the final part of the descent, not after it.
+  if(a.fortressIntroDescent>=.62)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/4.0);
+  const turnT=a.fortressIntroTurn;
+  const turn=turnT*turnT*turnT*(turnT*(turnT*6-15)+10);
   a.yaw=Math.PI*(1-turn);
+  // The aircraft banks into the turn and rolls level again as it completes it.
+  const lateralSpeed=a.velocity[0];
+  const movementBank=Math.max(-.22,Math.min(.22,-lateralSpeed*.003));
+  const turnBank=.32*Math.sin(Math.PI*turn);
+  const desiredBank=movementBank+turnBank;
+  a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*3.5));
   return;
  }
  const before=a.pos.slice();
