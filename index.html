@@ -562,7 +562,8 @@ function damageTarget(target,damage,impact){
 }
 
 function spawnFortress(){
- const a={fortress:true,pos:[pos[0],pos[1]+18,pos[2]-1050],yaw:0,roll:0,phase:1.1,
+ const a={fortress:true,pos:[pos[0],pos[1]+18,pos[2]-1050],yaw:Math.PI,roll:0,phase:1.1,
+  fortressIntroTurn:0,
   fortressApproaching:true,fortressBlend:0,fortressMoveClock:0,fortressTargetOffset:[0,0,400],fortressAnchor:[pos[0],pos[1]+18],playerPosPrev:pos.slice(),
   lane:0,altitude:18,speed:405,skill:.25,velocity:[0,0,-405],
   hp:FORTRESS_HP,missileClock:0,burstRemaining:0,burstClock:0,burstGap:MISSILE_BURST_GAP};
@@ -1223,7 +1224,10 @@ function updateWingman(a,dt,time){
   const lateralSpeed=a.velocity[0];
   const desiredBank=Math.max(-.22,Math.min(.22,-lateralSpeed*.003));
   a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*2.4));
-  a.yaw=0;
+  // Face the player on arrival, then turn smoothly into the established combat heading.
+  if(distance<=650)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/3.2);
+  const turn=a.fortressIntroTurn*a.fortressIntroTurn*(3-2*a.fortressIntroTurn);
+  a.yaw=Math.PI*(1-turn);
   return;
  }
  const before=a.pos.slice();
