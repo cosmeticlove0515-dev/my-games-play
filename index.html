@@ -563,7 +563,7 @@ function damageTarget(target,damage,impact){
 
 function spawnFortress(){
  const a={fortress:true,pos:[pos[0],pos[1]+418,pos[2]-525],yaw:Math.PI,roll:0,phase:1.1,
-  fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:.75,
+  fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:1.05,
   fortressApproaching:true,fortressBlend:0,fortressMoveClock:0,fortressTargetOffset:[0,0,400],fortressAnchor:[pos[0],pos[1]+18],playerPosPrev:pos.slice(),
   lane:0,altitude:18,speed:405,skill:.25,velocity:[0,0,-405],
   hp:FORTRESS_HP,missileClock:0,burstRemaining:0,burstClock:0,burstGap:MISSILE_BURST_GAP};
@@ -1202,7 +1202,7 @@ function updateWingman(a,dt,time){
   // Keep the nose down through the dive, then pull up gently as the aircraft levels.
   const liftT=Math.max(0,Math.min(1,(descent-.12)/.88));
   const lift=liftT*liftT*(3-2*liftT);
-  a.fortressIntroPitch=.75*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
+  a.fortressIntroPitch=1.05*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
   // Match the transition into combat spacing to the final pull-up and turn.
   if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/4.0);
   const blend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
@@ -1238,7 +1238,7 @@ function updateWingman(a,dt,time){
   // The aircraft banks into the turn and rolls level again as it completes it.
   const lateralSpeed=a.velocity[0];
   const movementBank=Math.max(-.22,Math.min(.22,-lateralSpeed*.003));
-  const turnBank=.32*Math.sin(Math.PI*turn);
+  const turnBank=.72*Math.sin(Math.PI*turn);
   const desiredBank=movementBank+turnBank;
   a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*3.5));
   return;
