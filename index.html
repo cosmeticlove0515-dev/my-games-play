@@ -562,8 +562,8 @@ function damageTarget(target,damage,impact){
 }
 
 function spawnFortress(){
- const a={fortress:true,pos:[pos[0],pos[1]+238,pos[2]-1050],yaw:Math.PI,roll:0,phase:1.1,
-  fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:.34,
+ const a={fortress:true,pos:[pos[0],pos[1]+418,pos[2]-1050],yaw:Math.PI,roll:0,phase:1.1,
+  fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:.75,
   fortressApproaching:true,fortressBlend:0,fortressMoveClock:0,fortressTargetOffset:[0,0,400],fortressAnchor:[pos[0],pos[1]+18],playerPosPrev:pos.slice(),
   lane:0,altitude:18,speed:405,skill:.25,velocity:[0,0,-405],
   hp:FORTRESS_HP,missileClock:0,burstRemaining:0,burstClock:0,burstGap:MISSILE_BURST_GAP};
@@ -1197,7 +1197,7 @@ function updateWingman(a,dt,time){
   // Descend from high above the frame, starting once the fortress approaches view.
   if(distance<=850)a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/3.6);
   const descent=a.fortressIntroDescent*a.fortressIntroDescent*(3-2*a.fortressIntroDescent);
-  a.fortressIntroPitch=.34*(1-descent);
+  a.fortressIntroPitch=.75*(1-descent);
   if(distance<=470)a.fortressBlend=Math.min(1,a.fortressBlend+dt/3.2);
   const blend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
   a.fortressApproaching=a.fortressBlend<1;
@@ -1207,9 +1207,9 @@ function updateWingman(a,dt,time){
   }
   a.fortressMoveClock-=dt;
   // Lateral and vertical movement is independent of the player; only forward range tracks the player.
-  const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+220*(1-descent),pos[2]-a.fortressTargetOffset[2]];
+  const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-a.fortressTargetOffset[2]];
   const approach=[a.pos[0]+(a.fortressAnchor[0]-a.pos[0])*(1-Math.exp(-dt*.28)),
-                  a.pos[1]+(a.fortressAnchor[1]+220*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
+                  a.pos[1]+(a.fortressAnchor[1]+400*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
                   a.pos[2]-405*dt];
   const holdFactor=1-Math.exp(-dt*.8);
   // Match the player's world displacement before easing the relative offset.
