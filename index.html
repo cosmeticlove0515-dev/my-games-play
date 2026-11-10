@@ -2006,6 +2006,10 @@ const targetCandidates=[...wingmen.filter(a=>!a.fortress),...fortressTargets];
 for(const [enemyIndex,a] of targetCandidates.entries()){
  const marker=a.fortressPart?a.marker:enemyMarkers[wingmen.indexOf(a)];
  if(a.destroyed){marker.style.display='none';marker.classList.remove('missileLocked');continue;}
+ // Do not show or acquire fortress lock markers until the entrance turn and leveling finish.
+ if(a.fortressPart&&(a.parent.fortressIntroTurn<1||Math.abs(a.parent.fortressIntroPitch)>.025||Math.abs(a.parent.yaw)>.025)){
+  marker.style.display='none';marker.classList.remove('missileLocked');continue;
+ }
  const p=[...a.pos,1],q=[0,0,0,0];
  for(let i=0;i<4;i++)q[i]=pv[i]*p[0]+pv[4+i]*p[1]+pv[8+i]*p[2]+pv[12+i]*p[3];
  if(q[3]<=0){marker.style.display='none';continue;}
