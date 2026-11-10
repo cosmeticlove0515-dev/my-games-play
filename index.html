@@ -1212,8 +1212,12 @@ function updateWingman(a,dt,time){
    a.fortressTargetOffset=[(Math.random()-.5)*150,(Math.random()-.5)*70,300+Math.random()*85];
   }
   a.fortressMoveClock-=dt;
+  // During the entrance turn, move closer before easing back to normal combat range.
+  const introTurnT=a.fortressIntroTurn;
+  const introTurnEase=introTurnT*introTurnT*introTurnT*(introTurnT*(introTurnT*6-15)+10);
+  const turnApproach=110*Math.sin(Math.PI*introTurnEase);
   // Lateral and vertical movement is independent of the player; only forward range tracks the player.
-  const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-a.fortressTargetOffset[2]];
+  const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-(a.fortressTargetOffset[2]-turnApproach)];
   const approach=[a.pos[0]+(a.fortressAnchor[0]-a.pos[0])*(1-Math.exp(-dt*.28)),
                   a.pos[1]+(a.fortressAnchor[1]+400*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
                   a.pos[2]-405*dt];
@@ -1228,7 +1232,7 @@ function updateWingman(a,dt,time){
    const hold=carried+(target[k]-carried)*holdFactor;
    a.pos[k]=approach[k]*(1-blend)+hold*blend;
   }
-  a.pos[2]=Math.min(a.pos[2],pos[2]-300);
+  a.pos[2]=Math.min(a.pos[2],pos[2]-(300-turnApproach));
   a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(dt,.0001));
   // Begin the heading change during the final part of the descent, not after it.
   if(a.fortressIntroDescent>=.62)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/4.0);
@@ -1237,7 +1241,7 @@ function updateWingman(a,dt,time){
   a.yaw=Math.PI*(1-turn);
   // The aircraft banks into the turn and rolls level again as it completes it.
   const lateralSpeed=a.velocity[0];
-  const movementBank=Math.max(-.22,Math.min(.22,-lateralSpeed*.003));
+  const movementBank=Math.max(-.58,Math.min(.58,-lateralSpeed*.008));
   const turnBank=.72*Math.sin(Math.PI*turn);
   const desiredBank=movementBank+turnBank;
   a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*3.5));
