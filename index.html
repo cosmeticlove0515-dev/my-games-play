@@ -1220,6 +1220,23 @@ function updateWingman(a,dt,time){
   const turnApproach=210*Math.sin(Math.PI*introTurnEase);
   // Lateral and vertical movement is independent of the player; only forward range tracks the player.
   const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-(a.fortressTargetOffset[2]-turnApproach)];
+  // Center the boss on the actual camera projection during the middle of its turn.
+  // Adjust only X/Y; the approved close-pass distance and Z trajectory stay unchanged.
+  const centerWeight=Math.pow(Math.sin(Math.PI*introTurnEase),2);
+  if(centerWeight>.0001){
+   const projected=screenPoint(target);
+   const px=screenPoint([target[0]+10,target[1],target[2]]);
+   const py=screenPoint([target[0],target[1]+10,target[2]]);
+   if(projected&&px&&py){
+    const sx=(px[0]-projected[0])/10,sy=(py[1]-projected[1])/10;
+    if(Math.abs(sx)>.00001&&Math.abs(sy)>.00001){
+     const centerX=Math.max(-260,Math.min(260,(.5-projected[0])/sx));
+     const centerY=Math.max(-260,Math.min(260,(.5-projected[1])/sy));
+     target[0]+=centerX*centerWeight;
+     target[1]+=centerY*centerWeight;
+    }
+   }
+  }
   const approach=[a.pos[0]+(a.fortressAnchor[0]-a.pos[0])*(1-Math.exp(-dt*.28)),
                   a.pos[1]+(a.fortressAnchor[1]+400*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
                   a.pos[2]-405*dt];
