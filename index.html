@@ -562,7 +562,7 @@ function damageTarget(target,damage,impact){
 }
 
 function spawnFortress(){
- const a={fortress:true,pos:[pos[0],pos[1]+418,pos[2]-1050],yaw:Math.PI,roll:0,phase:1.1,
+ const a={fortress:true,pos:[pos[0],pos[1]+418,pos[2]-525],yaw:Math.PI,roll:0,phase:1.1,
   fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:.75,
   fortressApproaching:true,fortressBlend:0,fortressMoveClock:0,fortressTargetOffset:[0,0,400],fortressAnchor:[pos[0],pos[1]+18],playerPosPrev:pos.slice(),
   lane:0,altitude:18,speed:405,skill:.25,velocity:[0,0,-405],
@@ -1195,7 +1195,7 @@ function updateWingman(a,dt,time){
   // The blend starts near 470 units; no positional snap or instant velocity reversal.
   const distance=pos[2]-a.pos[2];
   // Descend from high above the frame, starting once the fortress approaches view.
-  if(distance<=850)a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/4.1);
+  a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/4.1);
   // Ease the actual dive through a continuous acceleration and flare-out.
   const diveT=a.fortressIntroDescent;
   const descent=diveT*diveT*diveT*(diveT*(diveT*6-15)+10);
@@ -1203,7 +1203,8 @@ function updateWingman(a,dt,time){
   const liftT=Math.max(0,Math.min(1,(descent-.12)/.88));
   const lift=liftT*liftT*(3-2*liftT);
   a.fortressIntroPitch=.75*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
-  if(distance<=470)a.fortressBlend=Math.min(1,a.fortressBlend+dt/3.2);
+  // Match the transition into combat spacing to the final pull-up and turn.
+  if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/4.0);
   const blend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
   a.fortressApproaching=a.fortressBlend<1;
   if(a.fortressMoveClock<=0){
