@@ -1,0 +1,2803 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><title>SKY RANGE - Flight Prototype</title><style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#79b7e3;touch-action:none;font-family:system-ui,sans-serif}canvas{display:block;width:100%;height:100%}#hud{position:fixed;inset:0;pointer-events:none;color:white;text-shadow:0 2px 5px #1238}#top{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:15px;right:15px;display:flex;justify-content:space-between;font-size:13px;font-weight:700}#title{font-size:17px;letter-spacing:2px}#status{position:absolute;top:52px;right:15px;text-align:right;font-size:13px;line-height:1.7}#stick{position:absolute;top:0;left:0;width:146px;height:146px;transform:translate(-50%,-50%);display:none;border:2px solid #ffffff80;background:#ffffff20;border-radius:50%;pointer-events:auto;touch-action:none}#knob{position:absolute;left:43px;top:43px;width:56px;height:56px;border-radius:50%;background:#ffffff90;border:2px solid white;box-shadow:0 3px 14px #1235}#help{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 50px);right:16px;text-align:right;font-size:12px;line-height:1.7}#warn{position:absolute;top:30%;width:100%;text-align:center;font-weight:bold;color:#fff08b;font-size:17px}#shotLayer{position:absolute;inset:0;overflow:hidden;pointer-events:none}.kamikazeFlashOrb{position:absolute;pointer-events:none;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,255,255,1) 0%,rgba(255,255,255,.98) 17%,rgba(255,247,255,.88) 32%,rgba(255,219,250,.55) 52%,rgba(255,206,246,.18) 72%,rgba(255,206,246,0) 100%);mix-blend-mode:screen;}.shot{position:absolute;width:5px;height:23px;border-radius:5px;background:linear-gradient(90deg,#ffd234 0%,#fff5a2 24%,#ffffff 50%,#fff5a2 76%,#ffd234 100%);box-shadow:none;transform-origin:center;pointer-events:none}.missileRing{position:absolute;width:60px;height:60px;border:2px solid #ff203b;border-radius:50%;box-shadow:none;transform:translate(-50%,-50%);animation:missileRingBlink .5s steps(1,end) infinite;pointer-events:none}@keyframes missileRingBlink{50%{opacity:0}}.hitSpark{position:absolute;width:3px;height:13px;border-radius:1px;background:#fff6c0;box-shadow:0 0 3px #ffb52a;transform-origin:center;pointer-events:none}#cross{position:absolute;transform:translate(-50%,-50%);font-size:26px;color:#ffffff9a;pointer-events:none;will-change:left,top}#enemyMarkers{position:absolute;inset:0;pointer-events:none}.enemyMarker{position:absolute;box-sizing:border-box;transform:translate(-50%,-50%);border:2px solid rgba(255,240,160,.85);box-shadow:0 0 8px rgba(255,220,100,.35);pointer-events:none}.enemyMarker.missileLocked::before{content:"";position:absolute;width:var(--rocket-lock-size,34px);height:var(--rocket-lock-size,34px);box-sizing:border-box;border:2px solid #14baff;top:50%;left:50%;transform:translate(-50%,-50%) rotate(var(--rocket-lock-counter-angle,0deg)) rotate(var(--rocket-lock-angle,0deg));pointer-events:none}@keyframes rocketLockReadyBlink{0%,49.9%{opacity:1}50%,100%{opacity:0}}@keyframes rocketLockReadyFlash{0%{border-color:#ffffff}45%{border-color:#b9f2ff}100%{border-color:#14baff}}.enemyMarker.rocketReady::before{border-width:4px;animation:rocketLockReadyBlink .6s steps(1,end) infinite,rocketLockReadyFlash .15s ease-out 1 both}.enemyMarker.inRange::after{content:"";position:absolute;width:50px;height:50px;box-sizing:border-box;border:2px solid rgba(255,240,160,.85);box-shadow:0 0 8px rgba(255,220,100,.35);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}#crossGhost{position:absolute;width:24px;height:24px;border:1px solid #d3f7ff80;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;display:none}#err{position:absolute;inset:0;display:none;place-items:center;background:#172b40;color:white;padding:25px}#gameVersion{position:fixed;left:8px;bottom:calc(env(safe-area-inset-bottom) + 6px);z-index:100000;color:rgba(255,255,255,.72);font:10px monospace;text-shadow:0 1px 3px #1239;pointer-events:none}</style></head><body><canvas id="c"></canvas><div id="gameVersion">SKY RANGE v545</div><div id="hud"><div id="top"><span id="title">SKY RANGE / TEST 01</span><span>RAIL FLIGHT</span></div><div id="status"></div><div id="shotLayer"></div><div id="enemyMarkers"></div><div id="cross">＋</div><div id="crossGhost"></div><div id="warn"></div><div id="stick"><div id="knob"></div></div><div id="help">ドラッグ：上下左右に移動 / 素早くスワイプ：ロール回避<br>移動範囲には制限あり<br>前方へ自動飛行 / 指を離すと停止</div></div><div id="err">この端末ではWebGLを起動できませんでした。</div><script>
+(()=>{'use strict';const canvas=document.getElementById('c'),gl=canvas.getContext('webgl',{antialias:true,alpha:false,powerPreference:'high-performance'});if(!gl){document.getElementById('err').style.display='grid';return}const vs=`attribute vec3 p;attribute vec3 color;uniform mat4 vp;varying vec3 v;varying float fog;void main(){vec4 q=vp*vec4(p,1.);gl_Position=q;v=color;fog=clamp((q.w-380.)/1250.,0.,1.);}`;const fs=`precision mediump float;varying vec3 v;varying float fog;uniform float modelAlpha;uniform float kamikazeGlow;uniform float kamikazeFlash;void main(){float g=clamp(kamikazeGlow,0.,1.);vec3 pink=vec3(1.,.37,.73);vec3 white=vec3(1.,.95,1.);vec3 glowColor=mix(pink,white,smoothstep(.42,1.,g));vec3 lit=mix(v,glowColor,g*.94);lit=mix(lit,vec3(1.),clamp(kamikazeFlash,0.,1.));gl_FragColor=vec4(mix(lit,vec3(.67,.79,.85),fog*(1.-g*.72)),modelAlpha);}`;function shader(type,src){let s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s}let prog=gl.createProgram();gl.attachShader(prog,shader(gl.VERTEX_SHADER,vs));gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);gl.useProgram(prog);let P=gl.getAttribLocation(prog,'p'),C=gl.getAttribLocation(prog,'color'),VP=gl.getUniformLocation(prog,'vp'),modelAlpha=gl.getUniformLocation(prog,'modelAlpha'),kamikazeGlow=gl.getUniformLocation(prog,'kamikazeGlow'),kamikazeFlash=gl.getUniformLocation(prog,'kamikazeFlash');gl.useProgram(prog);gl.uniform1f(modelAlpha,1);gl.uniform1f(kamikazeGlow,0);gl.uniform1f(kamikazeFlash,0);gl.enable(gl.DEPTH_TEST);gl.enableVertexAttribArray(P);gl.enableVertexAttribArray(C);const verts=[],cols=[];function tri(a,b,c,col){for(let v of [a,b,c]){verts.push(...v);cols.push(...col)}}function quad(a,b,c,d,col){tri(a,b,c,col);tri(a,c,d,col)}function box(x,y,z,sx,sy,sz,col){let a=[x-sx,y-sy,z-sz],b=[x+sx,y-sy,z-sz],c=[x+sx,y+sy,z-sz],d=[x-sx,y+sy,z-sz],e=[x-sx,y-sy,z+sz],f=[x+sx,y-sy,z+sz],g=[x+sx,y+sy,z+sz],h=[x-sx,y+sy,z+sz];for(let q of [[a,b,c,d],[f,e,h,g],[e,a,d,h],[b,f,g,c],[d,c,g,h],[e,f,b,a]])quad(...q,col)}const rand=(a,b)=>{let t=Math.sin(a*127.1+b*311.7)*43758.5453;return t-Math.floor(t)};const extent=2100,step=140;for(let ix=-15;ix<15;ix++)for(let iz=-15;iz<15;iz++){let x=ix*step,z=iz*step,r=rand(ix,iz),g=.38+r*.11;quad([x,0,z],[x+step,0,z],[x+step,0,z+step],[x,0,z+step],[.22+r*.04,g,.19+r*.05])}for(let i=0;i<140;i++){let x=(rand(i,1)-.5)*3900,z=(rand(i,2)-.5)*3900;if(Math.abs(x)<360&&Math.abs(z)<360)continue;let h=55+rand(i,3)*260,r=75+rand(i,4)*160,base=[x,0,z],a=[x-r,0,z-r],b=[x+r,0,z-r],c=[x+r,0,z+r],d=[x-r,0,z+r],top=[x,h,z];tri(a,b,top,[.28,.39,.31]);tri(b,c,top,[.36,.45,.34]);tri(c,d,top,[.27,.36,.29]);tri(d,a,top,[.4,.48,.38]);if(h>200){let t=[x,h*.84,z];tri([x-r*.16,h*.78,z-r*.16],[x+r*.16,h*.78,z-r*.16],top,[.86,.88,.86]);tri([x+r*.16,h*.78,z-r*.16],[x+r*.16,h*.78,z+r*.16],top,[.92,.92,.9])}}for(let i=0;i<80;i++){let x=(rand(i,7)-.5)*3700,z=(rand(i,8)-.5)*3700;if(Math.abs(x)<250&&Math.abs(z)<250)continue;box(x,0,z,7+rand(i,9)*12,15+rand(i,10)*35,8,[.2,.32,.28])}function mesh(v,c){let vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(v),gl.STATIC_DRAW);let cb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,cb);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(c),gl.STATIC_DRAW);return {vb,cb,n:v.length/3,sourceV:v,sourceC:c}}let terrain=mesh(verts,cols);function planeMesh(enemy=false){let v=[],c=[];function t(a,b,d,k){for(let q of [a,b,d]){v.push(...q);c.push(...k)}}function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}let gray=enemy?[.15,.17,.20]:[.79,.84,.88],dark=enemy?[.055,.065,.08]:[.23,.3,.38],wing=enemy?[.10,.12,.15]:[.64,.72,.78];t([0,0,-10],[-1.4,-.7,5],[1.4,-.7,5],gray);t([0,1.4,5],[0,0,-10],[1.4,-.7,5],enemy?[.22,.24,.27]:[.92,.94,.96]);t([0,1.4,5],[-1.4,-.7,5],[0,0,-10],enemy?[.12,.14,.17]:[.73,.8,.86]);q([-1.2,-.2,0],[-12,-.6,7],[-10,-.6,10],[-1,-.2,6],wing);q([1.2,-.2,0],[1,-.2,6],[10,-.6,10],[12,-.6,7],wing);q([-1,0,7],[-5,.1,13],[-4,.1,15],[-.7,0,12],gray);q([1,0,7],[.7,0,12],[4,.1,15],[5,.1,13],gray);t([0,4,12],[-.6,0,10],[.6,0,10],gray);t([0,4,12],[.6,0,10],[0,0,15],dark);t([0,4,12],[0,0,15],[-.6,0,10],dark);q([-.9,.65,-2],[.9,.65,-2],[.85,1.3,3],[-.85,1.3,3],enemy?[.035,.045,.06]:[.16,.3,.42]);return mesh(v,c)}// Player-only A6M Zero-inspired low-poly mesh. Enemy aircraft keep the original model.
+function zeroMesh(){
+ const v=[],c=[];
+ const green=[.23,.34,.20],light=[.33,.43,.27],shadow=[.14,.23,.14],underside=[.67,.68,.58],glass=[.73,.77,.79],frame=[.48,.52,.51],red=[.76,.085,.075],black=[.075,.085,.07],metal=[.45,.47,.42];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ function cyl(z0,z1,r0,r1,k1,k2,cy=0){const n=20;for(let i=0;i<n;i++){let a=i*2*Math.PI/n,b=(i+1)*2*Math.PI/n;const p=[Math.cos(a)*r0,cy+Math.sin(a)*r0,z0],u=[Math.cos(b)*r0,cy+Math.sin(b)*r0,z0],d=[Math.cos(a)*r1,cy+Math.sin(a)*r1,z1],e=[Math.cos(b)*r1,cy+Math.sin(b)*r1,z1];q(p,u,e,d,(z0>=-7.3&&Math.sin((a+b)*.5)<-.12)?underside:(i%2?k1:k2))}}
+ // Round engine cowl, spinner backplate, and smooth tapered fuselage.
+ cyl(-10.1,-7.3,1.45,1.76,shadow,green);
+ cyl(-7.3,3.5,1.76,1.51,green,light);
+ cyl(3.5,10.7,1.51,.75,green,shadow);
+ cyl(10.7,15,.75,.30,green,light);
+ cyl(-10.25,-10.10,1.39,1.45,black,shadow);
+ // Wings: multi-section rounded tips, thickness and trailing-edge aileron panels.
+ for(const side of [-1,1]){
+  const x=n=>n*side;
+  const top=[ [1.25,-.54,-2.2],[5.8,-.64,-1.9],[9.8,-.59,-.8],[12.15,-.54,.35],[12.6,-.53,1.05],[12.35,-.53,1.8],[10.0,-.59,2.9],[5.8,-.64,3.65],[1.25,-.54,3.7] ];
+  const center=[x(5.6),-.48,.85];
+  for(let i=0;i<top.length-1;i++){
+   const a=top[i],b=top[i+1],aa=[x(a[0]),a[1],a[2]],bb=[x(b[0]),b[1],b[2]];
+   t(center,aa,bb,i<4?light:green);
+   const below=p=>[p[0],p[1]-.20,p[2]];
+   t(below(center),below(bb),below(aa),underside);
+   q(aa,below(aa),below(bb),bb,shadow);
+  }
+  // Close the inboard wing-root sector omitted by the open triangle fan.
+  // Keep this face underneath the fuselage; no exposed seam on the outer wing.
+  const rootFront=[x(top[0][0]),top[0][1],top[0][2]];
+  const rootRear=[x(top[top.length-1][0]),top[top.length-1][1],top[top.length-1][2]];
+  t(center,rootRear,rootFront,green);
+  const rootBelow=p=>[p[0],p[1]-.20,p[2]];
+  t(rootBelow(center),rootBelow(rootFront),rootBelow(rootRear),underside);
+  // Aileron strip along the outer trailing edge.
+  q([x(8.5),-.47,2.85],[x(11.7),-.45,1.96],[x(11.5),-.44,1.67],[x(8.5),-.47,2.56],shadow);
+  // Circular wing insignia (both faces).
+  for(const y of [-.79,-.425]){
+   const cx=x(6.4),cz=.95,r=1.53;
+   for(let i=0;i<24;i++){let a=i*Math.PI/12,b=(i+1)*Math.PI/12;t([cx,y,cz],[cx+Math.cos(a)*r,y,cz+Math.sin(a)*r],[cx+Math.cos(b)*r,y,cz+Math.sin(b)*r],red)}
+  }
+  // Rounded tailplane and elevator.
+  q([x(.55),.10,10.4],[x(3.4),.10,11.1],[x(4.3),.10,12.25],[x(.35),.10,13.6],green);
+  q([x(.35),.105,13.15],[x(3.8),.105,12.35],[x(4.05),.105,12.65],[x(.35),.105,13.65],shadow);
+  // Cowl-mounted machine gun barrels.
+  cyl(-10.55,-10.03,.11,.12,black,metal,0);
+ }
+ // A6M-style long framed greenhouse canopy: rounded roof, faceted side glazing,
+ // sloping windshield, sliding central hood and tapering rear fairing.
+ const stations=[
+  {z:-3.35,w:.83,side:1.33,shoulder:1.69,roof:1.83,top:.46},
+  {z:-2.40,w:.79,side:1.43,shoulder:2.02,roof:2.14,top:.51},
+  {z:-.80,w:.75,side:1.45,shoulder:2.23,roof:2.37,top:.53},
+  {z:1.35,w:.70,side:1.44,shoulder:2.20,roof:2.34,top:.50},
+  {z:2.75,w:.73,side:1.39,shoulder:1.93,roof:2.04,top:.49},
+  {z:4.65,w:.70,side:1.30,shoulder:1.36,roof:1.40,top:.45}
+ ];
+ function ring(st){
+  return [[-st.w,st.side,st.z],[-st.w*.96,st.shoulder,st.z],
+   [-st.top,st.roof,st.z],[st.top,st.roof,st.z],
+   [st.w*.96,st.shoulder,st.z],[st.w,st.side,st.z]];
+ }
+ const rings=stations.map(ring);
+ for(let j=0;j<rings.length-1;j++){
+  const a=rings[j],b=rings[j+1];
+  for(let k=0;k<5;k++)q(a[k],b[k],b[k+1],a[k+1],glass);
+ }
+ // Frame strips run along roof and glazing, not as floating horizontal plates.
+ const trim=.047;
+ for(const r of rings){
+  for(let k=0;k<5;k++){
+   const a=r[k],b=r[k+1];
+   q([a[0],a[1],a[2]-trim],[b[0],b[1],b[2]-trim],
+     [b[0],b[1],b[2]+trim],[a[0],a[1],a[2]+trim],frame);
+  }
+ }
+ // Longitudinal canopy ribs and central sliding-hood separation.
+ for(const k of [1,2,3,4]){
+  for(let j=0;j<rings.length-1;j++){
+   const a=rings[j][k],b=rings[j+1][k];
+   q([a[0]-trim,a[1],a[2]],[b[0]-trim,b[1],b[2]],
+     [b[0]+trim,b[1],b[2]],[a[0]+trim,a[1],a[2]],frame);
+  }
+ }
+ // Vertical stabilizer, sloping leading edge and distinct rudder.
+ t([0,.65,9.4],[0,4.15,12.3],[0,.62,14.7],green);
+ t([0,.62,14.7],[0,4.15,12.3],[0,.65,9.4],shadow);
+ // Cowling rim and propeller shaft (rotating blades are drawn separately).
+ cyl(-10.7,-10.20,.36,.43,metal,black);
+ return mesh(v,c);
+}
+function zeroPropellerMesh(){
+ const v=[],c=[],blade=[.095,.105,.095],edge=[.18,.19,.17],hub=[.48,.49,.43];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ // Three twisted blades, narrow at the hub, broad in the middle and tapered at the tips.
+ for(let i=0;i<3;i++){
+  const a=i*2*Math.PI/3,dx=Math.cos(a),dy=Math.sin(a),px=-dy,py=dx;
+  function p(r,w,z){return[dx*r+px*w,dy*r+py*w,z]}
+  q(p(.32,-.12,-10.85),p(1.5,-.38,-10.96),p(3.15,-.43,-10.90),p(4.05,-.12,-10.82),blade);
+  q(p(.32,.12,-10.85),p(4.05,-.12,-10.82),p(3.15,-.43,-10.90),p(1.5,-.38,-10.96),edge);
+  q(p(.32,-.12,-10.85),p(4.05,-.12,-10.82),p(.32,.12,-10.85),p(.32,.12,-10.85),hub);
+ }
+ // Spinner nose.
+ for(let i=0;i<16;i++){const a=i*Math.PI/8,b=(i+1)*Math.PI/8;t([0,0,-11.15],[Math.cos(a)*.43,Math.sin(a)*.43,-10.83],[Math.cos(b)*.43,Math.sin(b)*.43,-10.83],hub)}
+ return mesh(v,c);
+}
+
+function modernJetMesh(){
+ const v=[],c=[];
+ const silver=[.68,.76,.82],upper=[.42,.53,.63],light=[.83,.89,.92],dark=[.19,.27,.36];
+ const edge=[.27,.36,.46],glass=[.09,.23,.34],glint=[.22,.43,.54],accent=[.88,.31,.16],engine=[.12,.15,.20];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ // Long faceted fuselage, nose points toward negative Z.
+ t([0,-.15,-15],[-1.55,-.75,-3],[1.55,-.75,-3],silver);
+ t([0,.35,-15],[1.55,-.75,-3],[-1.55,-.75,-3],light);
+ q([-1.55,-.75,-3],[-2.1,-.45,7],[2.1,-.45,7],[1.55,-.75,-3],silver);
+ q([-1.55,.5,-3],[1.55,.5,-3],[2.1,.65,7],[-2.1,.65,7],upper);
+ q([-1.55,.5,-3],[-2.1,.65,7],[-2.1,-.45,7],[-1.55,-.75,-3],edge);
+ q([1.55,.5,-3],[1.55,-.75,-3],[2.1,-.45,7],[2.1,.65,7],edge);
+ // Swept cranked wings with contrasting leading-edge panels.
+ for(const s of [-1,1]){
+  const p=(x,y,z)=>[s*x,y,z];
+  q(p(1.25,.15,-4),p(13.2,-.4,4.3),p(10.7,-.4,8.6),p(1.8,.15,6.7),upper);
+  q(p(1.25,.13,-4),p(13.2,-.43,4.3),p(11.8,-.45,5.0),p(2.0,.12,-1.9),light);
+  q(p(2.0,.13,6.9),p(10.7,-.42,8.6),p(9.7,-.42,9.25),p(2.1,.1,7.8),dark);
+  // Matching two-tone panels on the upper wing surface; slightly raised to avoid z-fighting.
+  q(p(1.25,.24,-4),p(13.2,-.31,4.3),p(11.8,-.33,5.0),p(2.0,.21,-1.9),light);
+  q(p(2.0,.22,6.9),p(10.7,-.33,8.6),p(9.7,-.33,9.25),p(2.1,.19,7.8),dark);
+  // Raised wing root and ventral intake.
+  q(p(1.3,-.15,0),p(3.1,-.45,1.3),p(3.2,-1.2,4.6),p(1.65,-1.05,4.3),edge);
+  q(p(1.65,-1.05,4.3),p(3.2,-1.2,4.6),p(3.1,-.7,5.2),p(1.7,-.65,5.2),engine);
+  // Outward-canted twin tail fins.
+  q(p(1.8,.55,5.5),p(2.7,3.6,7.8),p(3.35,3.9,10.8),p(2.0,.6,10.4),upper);
+  q(p(2.65,3.6,7.8),p(3.35,3.9,10.8),p(3.0,3.2,10.5),p(2.4,3.0,7.9),light);
+  // Horizontal stabilizers.
+  q(p(1.65,.0,7.5),p(6.8,-.25,10.0),p(5.5,-.25,12.1),p(1.65,0,10.7),silver);
+  // Twin-engine exhausts, dark recessed centers.
+  q(p(1.0,-.7,9.8),p(2.25,-.7,9.8),p(2.25,.2,9.8),p(1.0,.2,9.8),engine);
+  q(p(1.18,-.52,9.83),p(2.05,-.52,9.83),p(2.05,.04,9.83),p(1.18,.04,9.83),accent);
+ }
+ // Faceted elongated cockpit canopy with a visible front windshield.
+ t([0,1.7,-5.2],[-.85,.55,-5.9],[.85,.55,-5.9],glint);
+ q([-.85,.55,-5.9],[0,1.7,-5.2],[0,1.55,1.0],[-1.05,.62,1.8],glass);
+ q([0,1.7,-5.2],[.85,.55,-5.9],[1.05,.62,1.8],[0,1.55,1.0],glint);
+ q([-1.05,.62,1.8],[0,1.55,1.0],[1.05,.62,1.8],[0,.8,2.2],dark);
+ // Centerline fuselage stripe.
+ q([-.18,.53,2.3],[.18,.53,2.3],[.2,.57,6.9],[-.2,.57,6.9],light);
+ return mesh(v,c)
+}
+
+// Giant-fighter aerial fortress: one shared, purpose-built low-poly mesh.
+// Local nose is -Z, like the original enemy fighter. Six engine nacelles,
+// stepped armor, cranked delta wings, red intake lights and weapon turrets.
+function fortressFighterMesh(engineAlive=[true,true,true,true,true,true]){
+ const v=[],c=[];
+ const hull=[.16,.19,.24],upper=[.27,.31,.37],edge=[.08,.11,.16],panel=[.36,.40,.45],dark=[.045,.065,.09],red=[.85,.11,.09],hot=[1,.36,.15];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ function bx(x,y,z,sx,sy,sz,k){const a=[x-sx,y-sy,z-sz],b=[x+sx,y-sy,z-sz],d=[x-sx,y+sy,z-sz],cc=[x+sx,y+sy,z-sz],e=[x-sx,y-sy,z+sz],f=[x+sx,y-sy,z+sz],g=[x+sx,y+sy,z+sz],h=[x-sx,y+sy,z+sz];q(a,b,cc,d,k);q(f,e,h,g,k);q(e,a,d,h,k);q(b,f,g,cc,k);q(d,cc,g,h,k);q(e,f,b,a,k)}
+ // Armored wedge hull, long sharp nose and raised command bridge.
+ t([0,0,-77],[-13,-7,-20],[13,-7,-20],upper);
+ t([0,10,-27],[0,0,-77],[13,-7,-20],hull);
+ t([0,10,-27],[-13,-7,-20],[0,0,-77],panel);
+ bx(0,-1,6,16,8,30,hull);bx(0,8,0,10,6,19,upper);
+ bx(0,14,-13,6,2,11,dark);bx(0,16,-14,4.5,1,8,red);
+ // Thick segmented swept wings and separate top armor plates.
+ for(const side of [-1,1]){
+  const p=(x,y,z)=>[side*x,y,z];
+  q(p(12,1,-26),p(91,-3,14),p(82,-3,34),p(14,1,19),upper);
+  q(p(14,1,-23),p(80,-2,14),p(71,-2,19),p(15,2,-11),panel);
+  q(p(17,-2,16),p(82,-4,34),p(69,-4,40),p(16,-2,31),edge);
+  bx(side*29,-3,19,12,3,11,hull);
+  bx(side*49,-4,25,10,3,8,hull);
+  // Three engines on each side: six in total.
+  for(const [j,x] of [25,43,61].entries()){
+   bx(side*x,-7,24+j*3,6,6,17,edge);
+   bx(side*x,-7,41+j*3,4.2,4.2,1,engineAlive[(side===-1?0:3)+j]?red:dark);
+   bx(side*x,-7,42+j*3,2.5,2.5,1,engineAlive[(side===-1?0:3)+j]?hot:edge);
+  }
+  // Twin tail fins, gun housings and red turret sights.
+  q(p(14,5,18),p(21,30,34),p(23,31,56),p(13,5,49),hull);
+  q(p(15,6,22),p(20,27,34),p(21,28,49),p(16,6,43),panel);
+  bx(side*36,4,0,7,5,10,edge);
+  bx(side*36,8,-2,4,3,5,upper);
+  bx(side*36,8,-10,2,2,7,red);
+  bx(side*66,-1,25,5,3,6,edge);
+  bx(side*66,0,18,2,2,9,red);
+ }
+ // Ventral armor and aft vertical spine.
+ bx(0,-11,18,12,3,18,edge);
+ q([-7,9,22],[0,22,38],[0,22,57],[-7,9,52],panel);
+ q([7,9,22],[7,9,52],[0,22,57],[0,22,38],hull);
+ return mesh(v,c);
+}
+// Compact orange delta-wing interceptors are exclusive to three-plane formations.
+function formationJetMesh(){
+ const v=[],c=[],body=[.30,.34,.38],wing=[.86,.39,.12],edge=[.97,.64,.21],glass=[.08,.20,.27];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ t([0,.6,-12],[-1.6,-.5,6],[1.6,-.5,6],body);
+ t([0,.6,-12],[1.6,-.5,6],[0,1.5,3],edge);
+ t([0,.6,-12],[0,1.5,3],[-1.6,-.5,6],body);
+ for(const side of [-1,1]){
+  const p=(x,y,z)=>[side*x,y,z];
+  q(p(.9,0,-5),p(11,-.4,5),p(8.2,-.4,9),p(1.2,0,7),wing);
+  q(p(.9,.08,-5),p(11,-.32,5),p(9.9,-.33,5.6),p(1.0,.09,-3.4),edge);
+  t(p(1.2,0,5),p(3.1,3.8,10),p(1.2,0,10),body);
+ }
+ q([-.75,.8,-4],[.75,.8,-4],[.9,1.0,2],[-.9,1.0,2],glass);
+ q([-1,-.3,7],[1,-.3,7],[1,-.3,9],[-1,-.3,9],edge);
+ return mesh(v,c);
+}
+// Distinctive broad isosceles-triangle silhouette, sharp nose at local -Z.
+function kamikazeTriangleMesh(){
+ // Faceted stealth delta interceptor: sharp triangular planform with actual thickness,
+ // raised dorsal spine, cockpit, twin exhausts and angled stabilizers.
+ const v=[],c=[],armor=[.42,.12,.17],highlight=[.64,.19,.20],dark=[.12,.055,.085],
+  edge=[.93,.34,.16],glass=[.045,.16,.23],glint=[.19,.48,.55],metal=[.28,.29,.34],engine=[1,.38,.10];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ function bx(x,y,z,sx,sy,sz,k){const a=[x-sx,y-sy,z-sz],b=[x+sx,y-sy,z-sz],d=[x-sx,y+sy,z-sz],cc=[x+sx,y+sy,z-sz],e=[x-sx,y-sy,z+sz],f=[x+sx,y-sy,z+sz],g=[x+sx,y+sy,z+sz],h=[x-sx,y+sy,z+sz];q(a,b,cc,d,k);q(f,e,h,g,k);q(e,a,d,h,k);q(b,f,g,cc,k);q(d,cc,g,h,k);q(e,f,b,a,k)}
+ const nose=[0,.8,-36],center=[0,3.2,2],rear=[0,1.2,13];
+ for(const side of [-1,1]){
+  const p=(x,y,z)=>[side*x,y,z];
+  // Angular cranked delta wing with bevelled outer edge and a real underside.
+  q(nose,p(4.2,1.3,-15),p(15,-.15,8),center,armor);
+  t(p(4.2,1.3,-15),p(15,-.15,8),p(12.5,.6,12),highlight);
+  t(p(4.2,1.3,-15),p(12.5,.6,12),center,armor);
+  q(p(15,-.15,8),p(12.5,.6,12),p(12,-1.3,12),p(15,-1.3,8),edge);
+  q(nose,p(15,-1.3,8),p(12,-1.3,12),p(0,-1.6,12),dark);
+  // Segmented armor and inset panel streaks visible from above.
+  q(p(4.7,1.4,-12),p(11.7,.12,6),p(10.2,.7,7.8),p(3.9,1.6,-9),metal);
+  t(p(5.3,1.1,-5),p(12.6,.25,9),p(11.2,.7,9),edge);
+  // Four enlarged swept tail fins: two dorsal and two ventral, X-shaped from aft.
+  // Both surfaces are drawn to keep each fin visible from either viewing angle.
+  for(const vertical of [-1,1]){
+   const rootFront=p(6.5,vertical*.5,4.5),rootBack=p(6.5,vertical*.5,13.5);
+   const tipFront=p(11.2,vertical*8.8,8.5),tipBack=p(12.2,vertical*9.4,16.5);
+   q(rootFront,tipFront,tipBack,rootBack,highlight);
+   q(rootFront,rootBack,tipBack,tipFront,dark);
+  }
+  bx(side*4.2,-1.4,9.1,2.0,1.3,4.8,metal);
+  bx(side*4.2,-1.4,14,1.25,.85,.4,engine);
+ }
+ // Thick dorsal ridge and distinct glazed cockpit, not a flat triangular decal.
+ t(nose,[-2.3,1.5,-9],[0,4,-6],highlight);
+ t(nose,[0,4,-6],[2.3,1.5,-9],armor);
+ q([-2.3,1.5,-9],[0,4,-6],[0,3.5,3],[-2.1,2.2,4],glass);
+ q([0,4,-6],[2.3,1.5,-9],[2.1,2.2,4],[0,3.5,3],glint);
+ q([-2.1,2.2,4],[0,3.5,3],[0,1.2,13],[-1.3,1.0,12],armor);
+ q([0,3.5,3],[2.1,2.2,4],[1.3,1.0,12],[0,1.2,13],highlight);
+ bx(0,-1.25,8,2.1,1.2,5,dark);
+ return mesh(v,c);
+}
+const kamikazePlane=kamikazeTriangleMesh();
+let fortressPlane=fortressFighterMesh();
+// Shared default-size meshes: ordinary and formation fighters are 1.5x their former dimensions.
+// Scale the source vertices once so normal flight, falling wrecks and split fragments
+// all use the same enlarged geometry. Cannon and fortress meshes remain unchanged.
+function defaultEnemyMeshSize(original,factor){
+ return mesh(original.sourceV.map(v=>v*factor),original.sourceC);
+}
+let plane=modernJetMesh(),zeroPropeller=null,
+ enemyPlane=defaultEnemyMeshSize(planeMesh(true),1.5),
+ formationPlane=defaultEnemyMeshSize(formationJetMesh(),1.5);
+// Cannon variant: compact heavy airframe, visibly distinct from standard and formation jets.
+function cannonJetMesh(){
+ const v=[],c=[];
+ const dark=[.16,.19,.25],armor=[.40,.44,.52],light=[.66,.70,.77],red=[1,.28,.06],hot=[1,.64,.12],black=[.055,.075,.11];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ function box(x,y,z,w,h,l,k){
+  const a=[x-w/2,y-h/2,z-l/2],b=[x+w/2,y-h/2,z-l/2],d=[x+w/2,y+h/2,z-l/2],e=[x-w/2,y+h/2,z-l/2];
+  const f=[x-w/2,y-h/2,z+l/2],g=[x+w/2,y-h/2,z+l/2],h1=[x+w/2,y+h/2,z+l/2],i=[x-w/2,y+h/2,z+l/2];
+  q(a,b,d,e,k);q(f,i,h1,g,k);q(a,f,g,b,k);q(e,d,h1,i,k);q(a,e,i,f,k);q(b,g,h1,d,k);
+ }
+ // Narrow armored core and oversized twin engine nacelles, seen from behind.
+ t([0,1,-13],[-3,-2,9],[3,-2,9],armor);
+ q([-3,-2,3],[3,-2,3],[4,-1,14],[-4,-1,14],dark);
+ box(0,1,9,4.2,3.4,11,armor);
+ for(const side of [-1,1]){
+  const p=(x,y,z)=>[x*side,y,z];
+  // Aggressive outward-kinked wings: two prominent prongs at each rear corner.
+  q(p(2,0,-4),p(14,-1,0),p(18,1,12),p(6,0,9),armor);
+  q(p(6,.15,4),p(16,.4,9),p(18,1,12),p(7,.5,8),red);
+  q(p(12,0,6),p(18,1,12),p(17,4,15),p(12,3,11),dark);
+  // Tall outward-leaning forked tail fins dominate the rear view.
+  q(p(5,0,7),p(11,9,10),p(14,11,16),p(7,1,15),light);
+  q(p(7,1,9),p(11,8,12),p(12,9,15),p(8,2,14),red);
+  // Recessed engine nozzles with orange rectangular exhaust cores.
+  box(side*7.3,-1.4,11,5.6,5.4,7,dark);
+  box(side*7.3,-1.4,15,4.4,4.1,.8,black);
+  box(side*7.3,-1.4,15.5,2.7,2.5,.7,hot);
+  box(side*7.3,-1.4,16,1.4,1.3,.5,red);
+ }
+ // Central hanging cannon assembly: visible beneath the engines from aft.
+ box(0,-5,10,3.8,4,12,light);
+ box(0,-5,17,3,3,3,black);
+ box(0,-5,18.6,1.5,1.5,.8,red);
+ // Rear dorsal chevron, a distinctive warning mark.
+ q([-3,3,9],[0,5,12],[3,3,9],[0,3.5,15],red);
+ return mesh(v,c);
+}
+const cannonPlane=cannonJetMesh();
+// Fourth regular enemy: an armored gunship with a deliberately oversized,
+// fixed six-barrel Gatling cannon hanging below the fuselage. The geometry is
+// part of one shared mesh, so the same gun survives into wrecks and fragments.
+function gatlingGunshipMesh(part="all"){
+ const v=[],c=[];
+ const hull=[.25,.31,.37],armor=[.46,.52,.57],edge=[.11,.15,.19],black=[.035,.045,.055],steel=[.67,.70,.71],orange=[.95,.38,.10];
+ function t(a,b,d,k){for(const p of [a,b,d]){v.push(...p);c.push(...k)}}
+ function q(a,b,d,e,k){t(a,b,d,k);t(a,d,e,k)}
+ function bx(x,y,z,sx,sy,sz,k){const a=[x-sx,y-sy,z-sz],b=[x+sx,y-sy,z-sz],d=[x-sx,y+sy,z-sz],cc=[x+sx,y+sy,z-sz],e=[x-sx,y-sy,z+sz],f=[x+sx,y-sy,z+sz],g=[x+sx,y+sy,z+sz],h=[x-sx,y+sy,z+sz];q(a,b,cc,d,k);q(f,e,h,g,k);q(e,a,d,h,k);q(b,f,g,cc,k);q(d,cc,g,h,k);q(e,f,b,a,k)}
+ // Broad silhouette, heavy central fuselage and two prominent engines.
+ t([0,1,-19],[-5,-3,6],[5,-3,6],armor);
+ t([0,4,-12],[0,1,-19],[5,-3,6],hull);
+ t([0,4,-12],[-5,-3,6],[0,1,-19],edge);
+ bx(0,0,8,5,4,11,hull);bx(0,4,2,3,2,7,armor);
+ for(const side of [-1,1]){
+  const p=(x,y,z)=>[side*x,y,z];
+  q(p(3,0,-6),p(22,-1,5),p(19,-1,14),p(4,0,10),armor);
+  q(p(5,.2,-2),p(19,-.7,7),p(16,-.6,10),p(5,.3,7),edge);
+  q(p(5,1,9),p(11,10,18),p(12,11,22),p(4,1,18),hull);
+  bx(side*8,-2,12,4,4,9,edge);
+  bx(side*8,-2,21,2.8,2.8,1,orange);
+ }
+ if(part==="hull")return mesh(v,c);
+ if(part==="gun"){v.length=0;c.length=0;}
+ // Oversized ventral gun mount; six actual long polygonal barrels, not a decal.
+ bx(0,-6,0,5,3,8,edge);
+ bx(0,-9,-4,6.6,5.3,7.2,armor);
+ bx(0,-9,-11,6.2,6.2,2.2,black);
+ const radius=4.8,barrelRadius=1.45,barrelFront=-34,barrelBack=-10;
+ for(let i=0;i<6;i++){
+  const a=i*Math.PI/3,cx=Math.cos(a)*radius,cy=-9+Math.sin(a)*radius;
+  // Six square-section barrels remain legible even at modest screen sizes.
+  bx(cx,cy,(barrelFront+barrelBack)/2,barrelRadius,barrelRadius,(barrelBack-barrelFront)/2,steel);
+  bx(cx,cy,barrelFront-.8,barrelRadius*1.22,barrelRadius*1.22,1.2,black);
+  bx(cx,cy,barrelFront-2.1,barrelRadius*.68,barrelRadius*.68,.4,edge);
+ }
+ // Front ring and rear retaining brace tie the barrels together.
+ bx(0,-9,-28,6.6,6.6,1.3,armor);
+ bx(0,-9,-17,6.0,6.0,1.0,edge);
+ if(part==="gun"){for(let i=0;i<v.length;i+=3){v[i+1]+=6;}}
+ return mesh(v,c);
+}
+const gatlingPlane=gatlingGunshipMesh();
+const gatlingHull=gatlingGunshipMesh("hull"),gatlingTurret=gatlingGunshipMesh("gun");
+// Soft, translucent propeller-sweep disc, attached to the aircraft nose.
+const propDiscBuffer=gl.createBuffer();
+
+// A real 3D missile: tapered nose, cylindrical fuselage, tail nozzle and four fins.
+// Its local nose points along -Z; the mesh is shared by every launched missile.
+function makeMissileMesh(){
+ const v=[],c=[];const sides=10;
+ const steel=[.72,.76,.78],shade=[.36,.42,.48],nose=[.91,.87,.71],fin=[.75,.25,.19],dark=[.16,.19,.22];
+ function t(a,b,d,col){for(const q of [a,b,d]){v.push(...q);c.push(...col)}}
+ function ring(r,z,i){const a=2*Math.PI*i/sides;return [Math.cos(a)*r,Math.sin(a)*r,z]}
+ function section(r1,z1,r2,z2,colorA,colorB){for(let i=0;i<sides;i++){
+  const a=ring(r1,z1,i),b=ring(r1,z1,i+1),d=ring(r2,z2,i),e=ring(r2,z2,i+1);
+  const col=i%2?colorA:colorB;t(a,b,d,col);t(b,e,d,col);
+ }}
+ section(0,-10,1.3,-6.2,nose,nose);
+ section(1.3,-6.2,1.3,5.5,steel,shade);
+ section(1.3,5.5,1.5,7.2,shade,steel);
+ for(let i=0;i<sides;i++)t([0,0,7.21],ring(1.5,7.2,i+1),ring(1.5,7.2,i),dark);
+ for(let i=0;i<4;i++){
+  const a=i*Math.PI/2,rad=(r,z)=>[Math.cos(a)*r,Math.sin(a)*r,z];
+  const p=rad(1.15,2.2),q=rad(4.2,5.5),r=rad(4.2,7),u=rad(1.15,7);
+  t(p,q,r,fin);t(p,r,u,fin);t(r,q,p,shade);t(u,r,p,shade);
+ }
+ return mesh(v,c);
+}
+const missileMesh=makeMissileMesh();
+// Player rocket visual only: blue energy bolt, approximately twice the missile's dimensions.
+// Keep the enemy missile mesh and all projectile movement/collision unchanged.
+function makePlayerEnergyBoltMesh(){
+ const v=[],c=[],sides=12;
+ const bright=[.92,.98,1],blue=[.30,.84,1],deep=[1,1,1],tip=[.83,.96,1];
+ function tri(a,b,d,col){for(const p of [a,b,d]){v.push(...p);c.push(...col)}}
+ function ring(r,z,i){const angle=2*Math.PI*i/sides;return [Math.cos(angle)*r,Math.sin(angle)*r,z]}
+ function section(r1,z1,r2,z2){for(let i=0;i<sides;i++){
+  const a=ring(r1,z1,i),b=ring(r1,z1,i+1),d=ring(r2,z2,i),e=ring(r2,z2,i+1);
+  tri(a,b,d,i%3===0?bright:blue);tri(b,e,d,i%3===0?bright:deep);
+ }}
+ // Missile length 17.2 and radius 1.3; bolt length 34.4 and radius 2.6.
+ section(0,-20,2.6,-12.4);
+ section(2.6,-12.4,2.6,11);
+ section(2.6,11,0,14.4);
+ return mesh(v,c);
+}
+const playerEnergyBoltMesh=makePlayerEnergyBoltMesh();
+// Compact glowing orange cannon shell: a separate mesh, no missile fins or guidance.
+function cannonShellMesh(scale=1,brightYellowWhite=false){
+ const v=[],c=[],sides=10,colors=brightYellowWhite?[[1,1,.72],[1,.94,.18],[1,1,.96]]:[[1,.92,.42],[1,.43,.08],[.95,.19,.03]];
+ for(let i=0;i<sides;i++){
+  const a=i*2*Math.PI/sides,b=(i+1)*2*Math.PI/sides;
+  const p=(r,z,t)=>[Math.cos(t)*r,Math.sin(t)*r,z];
+  const faces=[[p(0,-35,a),p(6,-10,b),p(6,-10,a)],[p(6,-10,a),p(6,25,a),p(6,25,b)],[p(6,-10,a),p(6,25,b),p(6,-10,b)],[p(6,25,a),p(0,45,a),p(6,25,b)]];
+  // The shell flies toward local -Z: brighten the actual leading tip, not the tail.
+  for(let j=0;j<faces.length;j++)for(const point of faces[j]){v.push(...point.map(n=>n*scale));c.push(...(j===0?(brightYellowWhite?[1,1,1]:(i%2?[1,.96,.85]:[1,1,.97])):colors[i%3]));}
+ }
+ return mesh(v,c);
+}
+const cannonShell=cannonShellMesh();
+const gatlingShell=cannonShellMesh(1/3,true);
+function missileModel(m,scrollSpeed){
+ // Subtract world scroll from velocity to recover actual flight direction.
+ const heading=norm([m.vel[0],m.vel[1],m.vel[2]+scrollSpeed]);
+ let side=cross(heading,[0,1,0]);
+ if(Math.hypot(...side)<.01)side=[1,0,0];
+ side=norm(side);const up=norm(cross(side,heading)),back=heading.map(x=>-x);
+ return [side[0],side[1],side[2],0,up[0],up[1],up[2],0,back[0],back[1],back[2],0,...m.pos,1];
+}
+
+// Depth-tested, camera-facing 3D smoke. Transparent fragments do not write depth.
+const smokeVS=`attribute vec3 p;attribute vec2 uv;uniform mat4 vp;varying vec2 vUV;void main(){gl_Position=vp*vec4(p,1.);vUV=uv;}`;
+const smokeFS=`precision mediump float;varying vec2 vUV;uniform vec4 tint;void main(){float r=length(vUV);float a=1.-smoothstep(.13,.98,r);gl_FragColor=vec4(tint.rgb,tint.a*a);}`;
+const smokeProg=gl.createProgram();gl.attachShader(smokeProg,shader(gl.VERTEX_SHADER,smokeVS));gl.attachShader(smokeProg,shader(gl.FRAGMENT_SHADER,smokeFS));gl.linkProgram(smokeProg);
+if(!gl.getProgramParameter(smokeProg,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(smokeProg));
+const smokeP=gl.getAttribLocation(smokeProg,'p'),smokeUV=gl.getAttribLocation(smokeProg,'uv'),smokeVP=gl.getUniformLocation(smokeProg,'vp'),smokeTint=gl.getUniformLocation(smokeProg,'tint');
+const smokeBuffer=gl.createBuffer();
+// Batched smoke shader: per-vertex tint and opacity preserve the original
+// per-particle look while reducing hundreds of GPU submissions to one.
+const batchSmokeVS=`attribute vec3 p;attribute vec2 uv;attribute vec4 rgba;uniform mat4 vp;varying vec2 vUV;varying vec4 vTint;void main(){gl_Position=vp*vec4(p,1.);vUV=uv;vTint=rgba;}`;
+const batchSmokeFS=`precision mediump float;varying vec2 vUV;varying vec4 vTint;void main(){float r=length(vUV);float a=1.-smoothstep(.13,.98,r);gl_FragColor=vec4(vTint.rgb,vTint.a*a);}`;
+const batchSmokeProg=gl.createProgram();gl.attachShader(batchSmokeProg,shader(gl.VERTEX_SHADER,batchSmokeVS));gl.attachShader(batchSmokeProg,shader(gl.FRAGMENT_SHADER,batchSmokeFS));gl.linkProgram(batchSmokeProg);
+if(!gl.getProgramParameter(batchSmokeProg,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(batchSmokeProg));
+const batchP=gl.getAttribLocation(batchSmokeProg,'p'),batchUV=gl.getAttribLocation(batchSmokeProg,'uv'),batchRGBA=gl.getAttribLocation(batchSmokeProg,'rgba'),batchVP=gl.getUniformLocation(batchSmokeProg,'vp');
+const batchSmokeBuffer=gl.createBuffer();let batchSmokeCapacity=0,batchSmokeArray=new Float32Array(0);
+
+function renderWorldSmoke(pv,view){
+ const particles=[];
+ for(const d of missileSmoke)particles.push({d,missile:true});
+ for(const d of smokeParticles)particles.push({d,missile:false});
+ for(const d of rocketAfterglow)particles.push({d,missile:false,afterglow:true});
+
+ if(!particles.length && wingtipClouds.length<2 && !liveWingtipPositions.some(Boolean))return;
+ const right=[view[0],view[4],view[8]],up=[view[1],view[5],view[9]];
+ particles.sort((a,b)=>{
+  const za=view[2]*a.d.pos[0]+view[6]*a.d.pos[1]+view[10]*a.d.pos[2]+view[14];
+  const zb=view[2]*b.d.pos[0]+view[6]*b.d.pos[1]+view[10]*b.d.pos[2]+view[14];
+  return za-zb;
+ });
+ // Draw all depth-sorted smoke in one GPU submission, without changing particle
+ // counts, lifetime, size, position, tint, or blending order.
+ gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+ const floatsNeeded=particles.length*6*9;
+ if(batchSmokeCapacity<floatsNeeded){batchSmokeCapacity=Math.max(floatsNeeded,batchSmokeCapacity*2,540);batchSmokeArray=new Float32Array(batchSmokeCapacity);}
+ let cursor=0;
+ for(const {d,missile,wingtip,afterglow} of particles){
+  const t=d.age/d.life;
+  const radius=(afterglow?(d.size*(d.cannonTrail?3:1)*(1-.88*t)): wingtip?(1.25+3.8*t):missile?(3.2+8*t):(6+d.size*.24)*(1+2.4*t))*(d.fortressEngineSmoke?5:1);
+  const opacity=afterglow?(d.brightness*(1-t)): ((wingtip?.43:missile?.64:.69)*(1-t)*(wingtip?Math.min(1,d.age/.16):1));
+  // Cannon smoke begins nearly white and warms gradually to orange as it fades.
+  const cannonWarm=d.cannonTrail?Math.min(1,Math.max(0,t)):0;
+  const cr=afterglow?(d.cannonTrail?1:.67):wingtip?.94:missile?.36:.28,
+        cg=afterglow?(d.cannonTrail?(0.95-0.47*cannonWarm):.87):wingtip?.96:missile?.38:.30,
+        cb=afterglow?(d.cannonTrail?(0.88-0.76*cannonWarm):1):wingtip?1:missile?.40:.32;
+  const x=d.pos[0],y=d.pos[1],z=d.pos[2];
+  const put=(a,b)=>{batchSmokeArray[cursor++]=x+right[0]*a*radius+up[0]*b*radius;batchSmokeArray[cursor++]=y+right[1]*a*radius+up[1]*b*radius;batchSmokeArray[cursor++]=z+right[2]*a*radius+up[2]*b*radius;batchSmokeArray[cursor++]=a;batchSmokeArray[cursor++]=b;batchSmokeArray[cursor++]=cr;batchSmokeArray[cursor++]=cg;batchSmokeArray[cursor++]=cb;batchSmokeArray[cursor++]=opacity;};
+  put(-1,-1);put(1,-1);put(1,1);put(-1,-1);put(1,1);put(-1,1);
+ }
+ if(cursor){
+  gl.useProgram(batchSmokeProg);gl.uniformMatrix4fv(batchVP,false,new Float32Array(pv));
+  gl.bindBuffer(gl.ARRAY_BUFFER,batchSmokeBuffer);gl.bufferData(gl.ARRAY_BUFFER,batchSmokeArray.subarray(0,cursor),gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(batchP);gl.enableVertexAttribArray(batchUV);gl.enableVertexAttribArray(batchRGBA);
+  gl.vertexAttribPointer(batchP,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(batchUV,2,gl.FLOAT,false,36,12);gl.vertexAttribPointer(batchRGBA,4,gl.FLOAT,false,36,20);
+  gl.drawArrays(gl.TRIANGLES,0,cursor/9);
+  gl.disableVertexAttribArray(batchRGBA);
+ }
+ // Keep the existing wingtip ribbon renderer unchanged.
+ gl.useProgram(smokeProg);gl.uniformMatrix4fv(smokeVP,false,new Float32Array(pv));
+ gl.bindBuffer(gl.ARRAY_BUFFER,smokeBuffer);gl.enableVertexAttribArray(smokeP);gl.enableVertexAttribArray(smokeUV);
+ gl.vertexAttribPointer(smokeP,3,gl.FLOAT,false,20,0);gl.vertexAttribPointer(smokeUV,2,gl.FLOAT,false,20,12);
+ // Flat, razor-thin translucent white ribbons connecting successive wingtip positions.
+ // Previous vertices stay in world space; only new vertices originate at the wings.
+ gl.uniform4f(smokeTint,1,1,1,.25);
+ const halfWidth=.19;
+ for(let side=0;side<2;side++){
+  for(let i=side+2;i<wingtipClouds.length;i+=2){
+   const a=wingtipClouds[i-2],b=wingtipClouds[i];
+   if(!a||!b||Math.hypot(...a.pos.map((v,k)=>v-b.pos[k]))>55)continue;
+   const q=(d,sgn)=>[d.pos[0]+right[0]*sgn*halfWidth,d.pos[1]+right[1]*sgn*halfWidth,d.pos[2]+right[2]*sgn*halfWidth,0,0];
+   const a0=q(a,-1),a1=q(a,1),b0=q(b,-1),b1=q(b,1);
+   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([...a0,...b0,...b1,...a0,...b1,...a1]),gl.STREAM_DRAW);
+   gl.vertexAttribPointer(smokeP,3,gl.FLOAT,false,20,0);gl.vertexAttribPointer(smokeUV,2,gl.FLOAT,false,20,12);
+   gl.drawArrays(gl.TRIANGLES,0,6);
+  }
+  // Bridge the newest stored point to the actual wingtip every frame.
+  // This avoids a first-segment pop at each 35ms emission interval.
+  const latest=wingtipClouds.length>=2?wingtipClouds[wingtipClouds.length-2+side]:null;
+  const tip=liveWingtipPositions[side];
+  if(latest&&tip&&Math.hypot(...latest.pos.map((v,k)=>v-tip[k]))<=55){
+   const q=(p,sgn)=>[p[0]+right[0]*sgn*halfWidth,p[1]+right[1]*sgn*halfWidth,p[2]+right[2]*sgn*halfWidth,0,0];
+   const a0=q(latest.pos,-1),a1=q(latest.pos,1),b0=q(tip,-1),b1=q(tip,1);
+   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([...a0,...b0,...b1,...a0,...b1,...a1]),gl.STREAM_DRAW);
+   gl.vertexAttribPointer(smokeP,3,gl.FLOAT,false,20,0);gl.vertexAttribPointer(smokeUV,2,gl.FLOAT,false,20,12);
+   gl.drawArrays(gl.TRIANGLES,0,6);
+  }
+ }
+ gl.depthMask(true);gl.disable(gl.BLEND);gl.disableVertexAttribArray(smokeUV);
+ gl.useProgram(prog);gl.enableVertexAttribArray(P);gl.enableVertexAttribArray(C);
+}
+// Wingmen reuse the exact same aircraft mesh as the player.
+// Test setup: one three-aircraft formation only, with no subsequent spawns.
+// Mixed non-boss roster: standard, Gatling, cannon, kamikaze and formation.
+const wingmen=[]; // Boss-only test: no initial ordinary fighter
+const enemyMarkers=wingmen.map(()=>{const el=document.createElement('div');el.className='enemyMarker';document.getElementById('enemyMarkers').appendChild(el);return el;});
+const WEAPON_RANGE=750,ROCKET_RANGE=800;
+
+const ENEMY_HITS_TO_DESTROY=24, KAMIKAZE_HITS_TO_DESTROY=Math.ceil(ENEMY_HITS_TO_DESTROY*1.5), GATLING_HITS_TO_DESTROY=Math.ceil(ENEMY_HITS_TO_DESTROY*1.5), ENEMY_RESPAWN_DELAY=2.2;
+const ENEMY_SPAWN_INTERVAL_MIN=2, ENEMY_SPAWN_INTERVAL_MAX=8, MAX_ACTIVE_ENEMIES=3;
+let enemySpawnTimer=0, nextEnemySpawnInterval=ENEMY_SPAWN_INTERVAL_MIN+Math.random()*(ENEMY_SPAWN_INTERVAL_MAX-ENEMY_SPAWN_INTERVAL_MIN);
+let destroyedCount=0, debris=[], smokeParticles=[], blastEffects=[], delayedPlayerExplosions=[];
+
+// Pattern 3 test: defeated aircraft spiral down, then explode in midair.
+const fallingWrecks=[];
+// Boss ground-impact chain: ten blasts spaced by 0.2 seconds in world space.
+const bossGroundBlasts=[];
+// Separate one-off boss slot: does not consume the three ordinary enemy slots.
+let fortressSpawnClock=0,fortressHasSpawned=false;
+const FORTRESS_HP=120;
+const FORTRESS_ENGINE_HP=36;
+const fortressTargets=[];
+function fortressPartPosition(boss,part){
+ // Side engines sit on the visible wing; core is central, under the command bridge.
+ const offset=part.kind==='core'?[0,7,-10]:[part.side*[25,43,61][part.engineIndex],-7,42+part.engineIndex*3];
+ return boss.pos.map((v,k)=>v+offset[k]);
+}
+function refreshFortressTargets(){
+ for(const part of fortressTargets){
+  if(part.parent.destroyed){part.destroyed=true;continue;}
+  part.pos=fortressPartPosition(part.parent,part);
+  part.velocity=part.parent.velocity||[0,0,0];
+  if(part.kind==='core')part.destroyed=part.parent.engines.some(e=>!e.destroyed);
+ }
+}
+function damageTarget(target,damage,impact){
+ if(target.kamikaze&&(target.kamikazePhase==='flash'||target.kamikazePhase==='charge'))return;
+ if(target.fortressPart){
+  if(target.destroyed||target.parent.destroyed)return;
+  target.hp-=damage;
+  if(target.hp<=0){
+   target.destroyed=true;
+   spawnExplosion(target.pos,1.65);
+   if(target.kind==='engine'){
+    const boss=target.parent;
+    // Keep the original mesh and switch the destroyed engine's exhausts dark.
+    const old=fortressPlane;
+    fortressPlane=fortressFighterMesh(boss.engines.map(e=>!e.destroyed));
+    gl.deleteBuffer(old.vb);gl.deleteBuffer(old.cb);
+    if(boss.engines.every(e=>e.destroyed)){
+     boss.core.destroyed=false;
+     spawnExplosion(fortressPartPosition(boss,boss.core),1.3);
+    }
+   }else explodeEnemy(target.parent);
+  }
+ }else{
+  target.hp=(target.hp??ENEMY_HITS_TO_DESTROY)-damage;
+  if(target.hp<=0)explodeEnemy(target);
+ }
+}
+
+function spawnFortress(){
+ const a={fortress:true,pos:[pos[0],pos[1]+418,pos[2]-525],yaw:Math.PI,roll:0,phase:1.1,
+  fortressIntroTurn:0,fortressIntroDescent:0,fortressIntroPitch:1.05,fortressBankSpeed:0,
+  fortressApproaching:true,fortressBlend:0,fortressMoveClock:0,fortressTargetOffset:[0,0,400],fortressAnchor:[pos[0],pos[1]+18],playerPosPrev:pos.slice(),
+  lane:0,altitude:18,speed:405,skill:.25,velocity:[0,0,-405],
+  hp:FORTRESS_HP,missileClock:0,burstRemaining:0,burstClock:0,burstGap:MISSILE_BURST_GAP};
+ wingmen.push(a);
+ a.engines=[-1,1].flatMap(side=>[0,1,2].map(engineIndex=>({fortressPart:true,kind:'engine',side,engineIndex,parent:a,pos:[],velocity:[0,0,0],hp:FORTRESS_ENGINE_HP,destroyed:false,smokeClock:0})));
+ a.core={fortressPart:true,kind:'core',parent:a,pos:[],velocity:[0,0,0],hp:FORTRESS_HP,destroyed:true};
+ for(const part of [...a.engines,a.core]){
+  const el=document.createElement('div');el.className='enemyMarker';
+  document.getElementById('enemyMarkers').appendChild(el);
+  part.marker=el;fortressTargets.push(part);
+ }
+ refreshFortressTargets();
+ const marker=document.createElement('div');marker.className='enemyMarker';
+ marker.style.display='none';
+ document.getElementById('enemyMarkers').appendChild(marker);enemyMarkers.push(marker);
+}
+
+let wingtipClouds=[],wingtipClock=0,liveWingtipPositions=[null,null];
+const missiles=[],cannonShots=[],playerMissiles=[],missileSmoke=[],rocketAfterglow=[];
+// Player roll defense: register every enemy projectile pool here by default.
+const enemyProjectilePools=[missiles,cannonShots];let missileLockTarget=null,queuedMissileTarget=null;const PLAYER_ROCKET_COOLDOWN_MS=1000;
+let lastPlayerRocketLaunch=-Infinity;
+const playerRocketReady=now=>now-lastPlayerRocketLaunch>=PLAYER_ROCKET_COOLDOWN_MS;
+const MISSILE_INTERVAL=4,MISSILE_BURST_GAP=.3,MISSILE_SPEED=228.75,MAX_MISSILES=24,MAX_PLAYER_MISSILES=4;
+const MISSILE_TURN_RATE=20*Math.PI/180; // Enemy missiles: 20 degrees per second
+const PLAYER_MISSILE_SPEED=MISSILE_SPEED*4; // Player rockets: twice v276 speed, no homing
+// World +Z points toward the player. Limit missile flight to a 45-degree cone around +Z.
+function coneLimitedMissileVelocity(v){
+ const horizontal=Math.hypot(v[0],v[1]);
+ const forward=Math.max(0,v[2]);
+ // tan(45 degrees): lateral/upward magnitude is limited relative to forward motion.
+ if(horizontal<=forward*Math.tan(Math.PI/4)){const len=Math.max(.001,Math.hypot(...v));return v.map(n=>n/len*MISSILE_SPEED);}
+ if(horizontal<.000001)return [0,0,MISSILE_SPEED];
+ const side=MISSILE_SPEED*Math.sin(Math.PI/4);
+ const axial=MISSILE_SPEED*Math.cos(Math.PI/4);
+ return [v[0]/horizontal*side,v[1]/horizontal*side,axial];
+}
+// A narrowly avoided missile briefly slows the entire simulation (real-time duration).
+let nearMissSlowUntil=0,rollSlowTriggered=false;const NEAR_MISS_FORWARD=200,NEAR_MISS_SIDE=30,NEAR_MISS_TIME=1000,NEAR_MISS_SCALE=.25;
+// Separate, one-shot authorization for player-hit explosions.
+// All other explosions (enemy destruction, scenery, player weapons) are untouched.
+let playerHitBlastStage=0;
+function spawnPlayerHitExplosion(at,power,stage){
+ if(stage!==playerHitBlastStage+1||stage>2)return false;
+ playerHitBlastStage=stage;
+ spawnExplosion(at,power,stage===2?2:1);
+ return true;
+}
+function spawnExplosion(at,power=1,sphereSizeMultiplier=1,groundFixed=false){
+ if(power>1){
+  // Layered fireball and expanding pressure wave, anchored in scrolling 3D space.
+  const fire=document.createElement('div'),wave=document.createElement('div');
+  fire.style.cssText='position:absolute;pointer-events:none;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(255,254,235,.98) 0%,rgba(255,240,149,.94) 14%,rgba(255,169,42,.82) 34%,rgba(255,91,20,.60) 53%,rgba(190,51,18,.32) 70%,rgba(96,34,28,.10) 86%,rgba(96,34,28,0) 100%);';
+  wave.style.cssText='position:absolute;pointer-events:none;border:4px solid #ffd68c;border-radius:50%;transform:translate(-50%,-50%);';
+  shotLayer.appendChild(fire);shotLayer.appendChild(wave);
+  blastEffects.push({fire,wave,pos:at.slice(),age:0,life:1.2,scale:Math.sqrt(power)*sphereSizeMultiplier,colorPhase:-1,groundFixed});
+ }
+ const colors=['#ffeb92','#ff8c36','#ff4725','#c7d4de','#677988'];
+ for(let i=0;i<Math.round(22*power);i++){
+  const size=(i<9*power?7+Math.random()*9:3+Math.random()*6)*Math.sqrt(power);
+  const height=size*(.5+Math.random()),color=colors[i%colors.length];
+  const angle=Math.random()*Math.PI*2,up=(Math.random()-.3)*120*power,speed=(55+Math.random()*175)*Math.sqrt(power);
+  debris.push({groundFixed,size,height,color,pos:at.slice(),vel:[Math.cos(angle)*speed,up,Math.sin(angle)*speed],age:0,life:.7+Math.random()*1.0});
+ }
+}
+// Pattern 4: aircraft geometry is divided into actual triangle groups, not placeholder cubes.
+const splitMeshCache=new Map(),burstFragments=[];
+function splitAircraftMesh(original,count){
+ const key=count,old=splitMeshCache.get(original);
+ if(old&&old[key])return old[key];
+ const parts=Array.from({length:count},()=>({v:[],c:[]}));
+ const v=original.sourceV,c=original.sourceC;
+ for(let i=0;i<v.length;i+=9){
+  const cx=(v[i]+v[i+3]+v[i+6])/3;
+  // Wing and fuselage triangles form contiguous left/center/right sections.
+  const index=count===2?(cx<0?0:1):(cx< -2?0:cx>2?2:1);
+  parts[index].v.push(...v.slice(i,i+9));parts[index].c.push(...c.slice(i,i+9));
+ }
+ const result=parts.map(part=>mesh(part.v,part.c));
+ const cache=old||{};cache[key]=result;splitMeshCache.set(original,cache);
+ return result;
+}
+// Keep the previous ordinary-enemy crash pattern across enemy types.
+let lastEnemyCrashPattern=0;
+function explodeEnemy(a){
+ if(a.destroyed)return;
+ a.destroyed=true;a.respawnDelay=ENEMY_RESPAWN_DELAY;a.hp=0;a.smokeClock=0;destroyedCount++;
+ // Four shared destruction patterns, equally likely for every ordinary enemy.
+ // Fortress retains its existing dedicated explosion.
+ if(a.fortress){
+  // Boss uses existing pattern 2: intact model spins and falls, then explodes on ground.
+  spawnExplosion(a.pos,1);
+  fallingWrecks.push({
+   fortress:true,fortressIntroPitch:0,
+   pos:a.pos.slice(),yaw:a.yaw||0,roll:a.roll||0,
+   mesh:fortressPlane,age:0,smokeClock:0,pattern:2,
+   airburstAt:Infinity,
+   spin:(Math.random()<.5?-1:1)*(2.5+Math.random()*2),
+   yawSpin:0,
+   vel:[(Math.random()-.5)*85,-17.5,Math.min(0,(a.velocity&&a.velocity[2])||-180)*(2/3)]
+  });
+  return;
+ }
+ // Choose uniformly from the three patterns other than the last one.
+ const draw=1+Math.floor(Math.random()*3);
+ const pattern=lastEnemyCrashPattern===0?1+Math.floor(Math.random()*4):draw+(draw>=lastEnemyCrashPattern?1:0);
+ lastEnemyCrashPattern=pattern;
+ if(pattern===1){
+  // Pattern 1: immediate aerial explosion, soft flash fireball.
+  spawnExplosion(a.pos,1.55);
+  return;
+ }
+ // Patterns 2-4 begin with the original sparks, without the spherical fireball.
+ spawnExplosion(a.pos,1);
+ if(pattern===2||pattern===3){
+  fallingWrecks.push({
+   pos:a.pos.slice(),yaw:a.yaw||0,roll:a.roll||0,
+   mesh:a.kamikaze?kamikazePlane:a.formation?formationPlane:a.cannon?cannonPlane:a.gatling?gatlingPlane:enemyPlane,
+   age:0,smokeClock:0,pattern,
+   airburstAt:pattern===3?.65+Math.random()*.8:Infinity,
+   spin:(Math.random()<.5?-1:1)*(5+Math.random()*4),
+   yawSpin:(Math.random()<.5?-1:1)*(1.4+Math.random()*2),
+   vel:[(Math.random()-.5)*85,-35,Math.min(0,(a.velocity&&a.velocity[2])||-180)]
+  });
+  return;
+ }
+ // Pattern 4: aircraft breaks into 2-3 real mesh sections.
+ const original=a.kamikaze?kamikazePlane:a.formation?formationPlane:a.cannon?cannonPlane:a.gatling?gatlingPlane:enemyPlane;
+ const count=Math.random()<.5?2:3;
+ const pieces=splitAircraftMesh(original,count);
+ const baseVelocity=a.velocity||[0,0,-200];
+ // One randomly selected piece is thrown distinctly downward; others retain their trajectories.
+ const downwardPiece=Math.floor(Math.random()*count);
+ for(let i=0;i<count;i++){
+  const lateral=count===2?(i===0?-1:1):i-1;
+  const verticalSpeed=i===downwardPiece?-(65+Math.random()*30):18+Math.random()*35;
+  const sidewaysSpeed=baseVelocity[0]*.2+lateral*(38+Math.random()*27);
+  // Pattern 4 only: every piece travels farther into the screen (-Z)
+  // than sideways, retaining independent random lateral/forward speeds.
+  const depthSpeed=-(Math.abs(sidewaysSpeed)+15+Math.random()*40);
+  burstFragments.push({
+   pos:a.pos.slice(),yaw:a.yaw||0,roll:a.roll||0,mesh:pieces[i],
+   vel:[sidewaysSpeed,verticalSpeed,depthSpeed],
+   spin:(Math.random()<.5?-1:1)*(3+Math.random()*5),
+   yawSpin:(Math.random()<.5?-1:1)*(2+Math.random()*3),
+   age:0,burstAt:.55+i*.33+Math.random()*.3,smokeClock:0
+  });
+ }
+}
+function updateFallingWrecks(dt,scrollSpeed){
+ for(let i=fallingWrecks.length-1;i>=0;i--){
+  const w=fallingWrecks[i];w.age+=dt;w.vel[1]-=(w.fortress?85:170)*dt;
+  for(let k=0;k<3;k++)w.pos[k]+=w.vel[k]*dt;
+  // Patterns 2 and 3: carry the falling aircraft into screen depth with world scroll,
+  // matching the scrolling motion already applied to pattern 4's broken sections.
+  w.pos[2]-=scrollSpeed*dt*(w.fortress?2/3:1);
+  w.roll+=w.spin*dt;w.yaw+=w.yawSpin*dt;
+  w.smokeClock+=dt;
+  while(w.smokeClock>=.045){
+   w.smokeClock-=.045;
+   if(smokeParticles.length<700)smokeParticles.push({
+    pos:[w.pos[0]+(Math.random()-.5)*4,Math.max(2,w.pos[1])+(Math.random()-.5)*3,w.pos[2]+6],
+    vel:[(Math.random()-.5)*15,12+Math.random()*18,15+Math.random()*25],
+    age:0,life:3+Math.random()*2,size:14+Math.random()*15
+   });
+  }
+  if(w.pattern===3&&(w.age>=w.airburstAt||w.pos[1]<=18)){
+   w.pos[1]=Math.max(18,w.pos[1]);
+   spawnExplosion(w.pos,2.4);fallingWrecks.splice(i,1);
+  }else if(w.pattern===2&&w.pos[1]<=5){
+   w.pos[1]=5;
+   if(w.fortress){
+    bossGroundBlasts.push({pos:w.pos.slice(),elapsed:0,next:0,remaining:10});
+   }else spawnExplosion(w.pos,2.4);
+   fallingWrecks.splice(i,1);
+  }else if(w.age>12){fallingWrecks.splice(i,1);}
+ }
+ // Process boss ground impacts in-frame, without timers that outlive the game loop.
+ for(let i=bossGroundBlasts.length-1;i>=0;i--){
+  const b=bossGroundBlasts[i];
+  // Ground impact stays at its world position; camera movement scrolls it with the terrain.
+  b.elapsed+=dt;
+  while(b.remaining>0&&b.elapsed>=b.next){
+   const blastPos=[b.pos[0]+(Math.random()-.5)*90,5,b.pos[2]+(Math.random()-.5)*90];
+   spawnExplosion(blastPos,2.4,1+Math.random(),true);
+   b.remaining--;
+   b.next+=.2;
+  }
+  if(b.remaining===0)bossGroundBlasts.splice(i,1);
+ }
+ for(let i=burstFragments.length-1;i>=0;i--){
+  const f=burstFragments[i];f.age+=dt;f.vel[1]-=115*dt;
+  for(let k=0;k<3;k++)f.pos[k]+=f.vel[k]*dt;
+  // Pattern 4: add the current world scroll throughout the fragment flight.
+  f.pos[2]-=scrollSpeed*dt;
+  f.roll+=f.spin*dt;f.yaw+=f.yawSpin*dt;
+  f.smokeClock+=dt;
+  while(f.smokeClock>.07){
+   f.smokeClock-=.07;
+   if(smokeParticles.length<700)smokeParticles.push({
+    pos:f.pos.slice(),vel:[(Math.random()-.5)*12,10+Math.random()*12,Math.random()*16],
+    age:0,life:1.8+Math.random(),size:9+Math.random()*11
+   });
+  }
+  if(f.age>=f.burstAt||f.pos[1]<=12){
+   spawnExplosion([f.pos[0],Math.max(12,f.pos[1]),f.pos[2]],1.55);
+   burstFragments.splice(i,1);
+  }
+ }
+}
+function wrapAngle(a){return Math.atan2(Math.sin(a),Math.cos(a))}
+// Keep enemy flight paths inside the CAMERA view, not inside a world-distance sphere.
+// Use the same camera orientation and projection as the actual renderer.
+function screenPoint(world){
+ const w=innerWidth,h=innerHeight;
+ const view=look(cam,[cam[0],cam[1]-6,pos[2]-95],[0,1,0]);
+ const proj=perspective(67*Math.PI/180,w/h,.5,4400);proj[9]=-(1/3);
+ const m=mul(proj,view),q=[0,0,0,0];
+ for(let i=0;i<4;i++)q[i]=m[i]*world[0]+m[4+i]*world[1]+m[8+i]*world[2]+m[12+i];
+ if(q[3]<=.001)return null;
+ return [.5+.5*q[0]/q[3],.5-.5*q[1]/q[3]];
+}
+// Project the entire compact fighter (not only its center) into the safe viewport.
+function formationSafeTarget(target){
+ const z=target[2],center=screenPoint(target);
+ if(!center)return target;
+ const xPlus=screenPoint([target[0]+10,target[1],z]);
+ const yPlus=screenPoint([target[0],target[1]+10,z]);
+ if(!xPlus||!yPlus)return target;
+ const dx=(xPlus[0]-center[0])/10,dy=(yPlus[1]-center[1])/10;
+ // The rendered interceptor extends about 11 units across the wings.
+ const wingL=screenPoint([target[0]-13,target[1],z]);
+ const wingR=screenPoint([target[0]+13,target[1],z]);
+ const top=screenPoint([target[0],target[1]+7,z]);
+ const bottom=screenPoint([target[0],target[1]-7,z]);
+ const marginX=Math.max(Math.abs((wingL?.[0]??center[0])-center[0]),Math.abs((wingR?.[0]??center[0])-center[0]))+.025;
+ const marginY=Math.max(Math.abs((top?.[1]??center[1])-center[1]),Math.abs((bottom?.[1]??center[1])-center[1]))+.025;
+ const lowX=Math.min(.45,.04+marginX),highX=1-lowX;
+ const lowY=Math.min(.45,.06+marginY),highY=1-lowY;
+ const boundedX=Math.max(lowX,Math.min(highX,center[0]));
+ const boundedY=Math.max(lowY,Math.min(highY,center[1]));
+ return [target[0]+(Math.abs(dx)>1e-8?(boundedX-center[0])/dx:0),
+         target[1]+(Math.abs(dy)>1e-8?(boundedY-center[1])/dy:0),z];
+}
+// Cannon arena: screen-space rectangle covering almost all of the upper half.
+// Both the chosen dodge endpoints and the complete straight path stay in this convex area.
+const CANNON_BOUNDS={left:.035,right:.965,top:.028,bottom:.500};
+function cannonRectangleStep(from,stepX,stepY){
+ const center=screenPoint(from),x10=screenPoint([from[0]+10,from[1],from[2]]),y10=screenPoint([from[0],from[1]+10,from[2]]);
+ if(!center||!x10||!y10)return [from[0]+stepX,from[1]+stepY,from[2]];
+ const sx=(x10[0]-center[0])/10,sy=(y10[1]-center[1])/10;
+ if(Math.abs(sx)<1e-8||Math.abs(sy)<1e-8)return [from[0]+stepX,from[1]+stepY,from[2]];
+ const b=CANNON_BOUNDS;
+ const x=Math.max(b.left,Math.min(b.right,center[0]+stepX*sx));
+ const y=Math.max(b.top,Math.min(b.bottom,center[1]+stepY*sy));
+ return [from[0]+(x-center[0])/sx,from[1]+(y-center[1])/sy,from[2]];
+}
+// Fixed 162.5-unit (ten-aircraft-length) dodge. Find the destination farthest
+// from the player among the full-length straight moves that fit the rectangle.
+function cannonFixedDistanceEscapeDestination(from){
+ const center=screenPoint(from),x10=screenPoint([from[0]+10,from[1],from[2]]),y10=screenPoint([from[0],from[1]+10,from[2]]);
+ if(!center||!x10||!y10)return [from[0],from[1]];
+ const sx=(x10[0]-center[0])/10,sy=(y10[1]-center[1])/10;
+ if(Math.abs(sx)<1e-8||Math.abs(sy)<1e-8)return [from[0],from[1]];
+ const b=CANNON_BOUNDS,step=162.5,playerX=pos[0],playerY=pos[1];
+ let best=null,bestScore=-Infinity;
+ for(let i=0;i<192;i++){
+  const angle=i*Math.PI*2/192;
+  const x=from[0]+step*Math.cos(angle),y=from[1]+step*Math.sin(angle);
+  const px=center[0]+(x-from[0])*sx,py=center[1]+(y-from[1])*sy;
+  if(px<b.left||px>b.right||py<b.top||py>b.bottom)continue;
+  const score=(x-playerX)**2+(y-playerY)**2;
+  if(score>bestScore){bestScore=score;best=[x,y];}
+ }
+ if(best)return best;
+ // When a ten-length step cannot fit, take the longest straight step within
+ // the rectangle, preferring the endpoint farthest from the player on ties.
+ let fallback=[from[0],from[1]],bestLength=-1,bestFallbackScore=-Infinity;
+ for(let i=0;i<192;i++){
+  const angle=i*Math.PI*2/192,dx=Math.cos(angle),dy=Math.sin(angle);
+  const vx=dx*sx,vy=dy*sy;
+  let length=step;
+  if(vx>1e-10)length=Math.min(length,(b.right-center[0])/vx);
+  else if(vx< -1e-10)length=Math.min(length,(b.left-center[0])/vx);
+  if(vy>1e-10)length=Math.min(length,(b.bottom-center[1])/vy);
+  else if(vy< -1e-10)length=Math.min(length,(b.top-center[1])/vy);
+  length=Math.max(0,Math.min(step,length))*.985;
+  const x=from[0]+dx*length,y=from[1]+dy*length;
+  const score=(x-playerX)**2+(y-playerY)**2;
+  if(length>bestLength+1e-6||(Math.abs(length-bestLength)<=1e-6&&score>bestFallbackScore)){
+   bestLength=length;bestFallbackScore=score;fallback=[x,y];
+  }
+ }
+ return fallback;
+}
+// Match the actual repeated mountain triangles, not an approximate noise heightmap.
+// Each mountain is a four-sided pyramid; the ground mesh is at y=0.
+const kamikazeTerrainPeaks=[];
+for(let i=0;i<140;i++){
+ const x=(rand(i,1)-.5)*3900,z=(rand(i,2)-.5)*3900;
+ if(Math.abs(x)<360&&Math.abs(z)<360)continue;
+ kamikazeTerrainPeaks.push({x,z,h:55+rand(i,3)*260,r:75+rand(i,4)*160});
+}
+function kamikazeTerrainHeight(x,z){
+ let height=0;
+ // Terrain is rendered in 4200-unit Z tiles with the same local geometry.
+ const tile=Math.floor(z/4200);
+ for(let dz=-1;dz<=1;dz++){
+  const localZ=z-(tile+dz)*4200;
+  for(const m of kamikazeTerrainPeaks){
+   const ax=Math.abs(x-m.x),az=Math.abs(localZ-m.z);
+   if(ax>=m.r||az>=m.r)continue;
+   // The four planar triangular faces meet at the center peak.
+   height=Math.max(height,m.h*(1-Math.max(ax,az)/m.r));
+  }
+ }
+ return height;
+}
+// A terrain escape is a committed upward turn, not per-frame reactive steering.
+// Keep climbing until there is ample clearance for a sustained period.
+// Only interrupt lateral flight for a genuinely imminent terrain collision.
+// A completed escape has a cooldown, preventing repeated up/down oscillation.
+function kamikazeCommittedClimb(a,velocity,dt){
+ const clearance=32;
+ const imminent=kamikazeTerrainThreat(a.pos,velocity,clearance,[.18,.35,.55,.8]);
+ const emergency=kamikazeTerrainThreat(a.pos,velocity,18,[.12,.24]);
+ const localClear=a.pos[1]-kamikazeTerrainHeight(a.pos[0],a.pos[2]);
+ a.kamikazeMountainCooldown=Math.max(0,(a.kamikazeMountainCooldown||0)-dt);
+ if(!a.kamikazeMountainClimb && imminent>12 &&
+    (a.kamikazeMountainCooldown<=0||emergency>38)){
+  a.kamikazeMountainClimb={elapsed:0,safeFor:0};
+ }
+ const climb=a.kamikazeMountainClimb;
+ if(!climb)return false;
+ climb.elapsed+=dt;
+ // Hold a single upward turn; do not restart on every frame of terrain sampling.
+ if(imminent<=0&&localClear>68)climb.safeFor+=dt;
+ else climb.safeFor=0;
+ if(climb.elapsed>=.8&&climb.safeFor>=.32){
+  a.kamikazeMountainClimb=null;
+  a.kamikazeMountainCooldown=2.2;
+  return false;
+ }
+ return true;
+}
+function kamikazeTerrainThreat(p,v,clearance,times){
+ let required=0;
+ for(const t of (times||[.18,.35,.55,.8])){
+  const x=p[0]+v[0]*t,z=p[2]+v[2]*t;
+  const terrain=kamikazeTerrainHeight(x,z)+clearance;
+  const predictedY=p[1]+v[1]*t;
+  required=Math.max(required,(terrain-predictedY)/Math.max(.2,t));
+ }
+ return required;
+}
+function formationFullyVisible(a){
+ const p=a.pos;
+ for(const offset of [[0,0,0],[-13,0,0],[13,0,0],[0,7,0],[0,-7,0]]){
+  const q=screenPoint(p.map((v,i)=>v+offset[i]));
+  if(!q||q[0]<.025||q[0]>.975||q[1]<.04||q[1]>.96)return false;
+ }
+ return true;
+}
+// v487: kamikaze-only test; evade with side/top silhouette visible.
+const pendingKamikazeImpacts=[];
+function updateWingman(a,dt,time){
+ if(a.destroyed)return;
+ if(a.kamikaze){
+  const old=a.pos.slice();
+  a.kamikazeClock+=dt;
+  if(a.kamikazePhase==='evade'){
+   // Follow the forward world scroll first, then add the craft's own nose-driven flight.
+   // Without this, the player's advancing Z leaves the evading craft behind.
+   a.pos[2]+=pos[2]-(a.kamikazePlayerZ??pos[2]);
+   a.kamikazePlayerZ=pos[2];
+   // Three-rule flight controller: flee the player, turn before screen edges,
+   // and pull up before terrain. Steering commitments persist until actual
+   // velocity has reversed, preventing alternating frame-by-frame orders.
+   const screen=screenPoint(a.pos);
+   const v=a.kamikazeFlightVelocity||[0,0,0];
+   const future=screenPoint([a.pos[0]+v[0]*.3,a.pos[1]+v[1]*.3,a.pos[2]+v[2]*.3]);
+   const xProbe=screenPoint([a.pos[0]+10,a.pos[1],a.pos[2]]);
+   const yProbe=screenPoint([a.pos[0],a.pos[1]+10,a.pos[2]]);
+   const jx=screen&&xProbe?(xProbe[0]-screen[0])/10:0;
+   const jy=screen&&yProbe?(yProbe[1]-screen[1])/10:0;
+   // Rule 1: the sole ordinary objective is to move away from the player's
+   // world-space position. A small persistent lateral component produces
+   // a sweeping curve without a second autonomous wander controller.
+   const dx=a.pos[0]-pos[0],dy=a.pos[1]-pos[1];
+   const planar=Math.max(1,Math.hypot(dx,dy));
+   let desired=[dx/planar*2.3+(a.kamikazeSide||1)*.48,
+                dy/planar*1.7,.75];
+   // A single soft preference, not another flight mode: favor the upper
+   // screen when the escape direction is otherwise unconstrained.
+   // Screen Y grows downward; the preference rises smoothly below center.
+   if(screen){
+    const lower=Math.max(0,Math.min(1,(screen[1]-.28)/.62));
+    desired[1]+= .18+1.25*lower*lower;
+   }
+   // Rule 2: look 0.3s ahead. Lock the inward turn until the actual
+   // screen-space velocity has reversed (not until a timer expires).
+   if(!a.kamikazeScreenTurn)a.kamikazeScreenTurn={x:0,y:0};
+   const lock=a.kamikazeScreenTurn;
+   const projectedVx=v[0]*jx;
+   const projectedVy=v[1]*jy;
+   if(lock.x && projectedVx*lock.x>8e-4)lock.x=0;
+   if(lock.y && projectedVy*lock.y>8e-4)lock.y=0;
+   if(screen&&future){
+    if(!lock.x){
+     if((future[0]>.84&&projectedVx>0)||(screen[0]>.86))lock.x=-1;
+     else if((future[0]<.16&&projectedVx<0)||(screen[0]<.14))lock.x=1;
+    }
+    if(!lock.y){
+     if((future[1]>.82&&projectedVy>0)||(screen[1]>.84))lock.y=-1;
+     else if((future[1]<.18&&projectedVy<0)||(screen[1]<.16))lock.y=1;
+    }
+   }
+   if(lock.x&&Math.abs(jx)>1e-6)desired[0]=lock.x*Math.sign(jx)*4.8;
+   if(lock.y&&Math.abs(jy)>1e-6)desired[1]=lock.y*Math.sign(jy)*4.6;
+   // Rule 3: predict real terrain along the current velocity. An upward
+   // turn is committed until upward movement and safe clearance are achieved.
+   // No altitude target, upper-screen bias, or mountain cooldown competes.
+   const threat=kamikazeTerrainThreat(a.pos,v,30,[.2,.4,.65,.9]);
+   const clearance=a.pos[1]-kamikazeTerrainHeight(a.pos[0],a.pos[2]);
+   if(!a.kamikazeGroundTurn && threat>15)a.kamikazeGroundTurn=true;
+   if(a.kamikazeGroundTurn){
+    desired[1]=Math.max(desired[1],4.8);
+    if(v[1]>25&&clearance>85&&threat<=0)a.kamikazeGroundTurn=false;
+   }
+   const wanted=norm(desired);
+   const turning=!!(lock.x||lock.y||a.kamikazeGroundTurn);
+   const turn=1-Math.exp(-dt*(turning?3.9:2.5));
+   a.kamikazeDirection=norm(a.kamikazeDirection.map((q,k)=>q+(wanted[k]-q)*turn));
+   const cruiseSpeed=181.25,escapeSpeed=231.25;
+   const wantedVelocity=a.kamikazeDirection.map(q=>q*(turning?escapeSpeed:cruiseSpeed));
+   if(!a.kamikazeFlightVelocity)a.kamikazeFlightVelocity=a.kamikazeDirection.map(q=>q*cruiseSpeed);
+   const accel=1-Math.exp(-dt*(turning?3.2:1.25));
+   a.kamikazeFlightVelocity=a.kamikazeFlightVelocity.map((q,k)=>q+(wantedVelocity[k]-q)*accel);
+   const proposed=a.pos.map((q,k)=>q+a.kamikazeFlightVelocity[k]*dt);
+   // Preserve v531's faster distant approach without affecting XY steering.
+   proposed[2]=a.pos[2]+Math.max(90,a.kamikazeFlightVelocity[2])*2*dt;
+   for(let k=0;k<3;k++)a.pos[k]=proposed[k];
+   const depth=a.pos[2]-pos[2];
+   if(depth< -1500||depth> -350){
+    a.kamikazeDirection=norm([a.kamikazeDirection[0],a.kamikazeDirection[1],depth< -1500?.8:-.55]);
+   }
+   a.kamikazePlayerZ=pos[2];
+   if(!a.kamikazeMountainClimb&&Math.hypot(...a.pos.map((v,k)=>v-pos[k]))<=500){
+    // Capture the actual rendered roll frame BEFORE resetting the phase clock.
+    // The evade frame depends on that clock; recomputing it after reset causes a snap.
+    const incomingFrame=kamikazeModel(a);
+    a.kamikazeRollEntryUp=[incomingFrame[4],incomingFrame[5],incomingFrame[6]];
+    a.kamikazePhase='align';a.kamikazeClock=0;a.kamikazeSpinAngle=0;a.kamikazeSpinSpeed=0;
+    a.kamikazeAlignVelocity=(a.kamikazeFlightVelocity||a.velocity||[0,0,0]).slice();
+    a.kamikazeAlignStartDirection=(a.kamikazeDirection||[0,0,-1]).slice();
+    // Choose a near-edge, fully visible departure point BEFORE the 3s alignment.
+    // Side choice follows current lateral motion when meaningful, otherwise position.
+    const screen=screenPoint(a.pos);
+    const side=Math.abs(a.kamikazeAlignVelocity[0])>30
+     ? Math.sign(a.kamikazeAlignVelocity[0])
+     : (screen&&screen[0]<.5?-1:1);
+    a.kamikazeChargeSide=side||1;
+   }
+  }else{
+   // During alignment only, point toward the player. The charge heading is locked.
+   if(a.kamikazePhase==='align'){
+    const aim=norm(pos.map((v,k)=>v-a.pos[k]));
+    // Smoothstep orientation over the EXISTING three-second alignment window:
+    // no sharp initial nose snap and no added preparation time.
+    const t=Math.min(1,a.kamikazeClock/3);
+    const eased=t*t*(3-2*t);
+    const start=norm(a.kamikazeAlignStartDirection||a.kamikazeDirection);
+    const cosine=Math.max(-1,Math.min(1,dot(start,aim)));
+    const angle=Math.acos(cosine);
+    if(angle>.0001&&Math.sin(angle)>.0001){
+     const sinAngle=Math.sin(angle);
+     a.kamikazeDirection=norm(start.map((v,k)=>v*Math.sin((1-eased)*angle)/sinAngle+aim[k]*Math.sin(eased*angle)/sinAngle));
+    }else a.kamikazeDirection=norm(start.map((v,k)=>v*(1-eased)+aim[k]*eased));
+   }
+   // Roll around the nose axis; do not alter steering or translational momentum.
+   // During the three-second alignment, angular speed ramps smoothly from zero.
+   // Carry that speed continuously into the charge.
+   const spinTarget=a.kamikazePhase==='align'
+    ? 20*Math.pow(Math.min(1,a.kamikazeClock/3),1.35)
+    : 20;
+   a.kamikazeSpinSpeed=(a.kamikazeSpinSpeed||0)+(spinTarget-(a.kamikazeSpinSpeed||0))*(1-Math.exp(-dt*5));
+   a.kamikazeSpinAngle=(a.kamikazeSpinAngle||0)+a.kamikazeSpinSpeed*dt;
+   if(a.kamikazePhase==='align'){
+    a.pos[2]+=pos[2]-(a.kamikazePlayerZ??pos[2]);
+    a.kamikazePlayerZ=pos[2];
+    // v512: time the approach for three seconds, but NEVER charge until the
+    // aircraft has actually reached a fully visible near-edge launch point.
+    // Preserve the incoming velocity; steer and brake with acceleration only.
+    if(!a.kamikazeAlignVelocity)a.kamikazeAlignVelocity=(a.kamikazeFlightVelocity||a.velocity||[0,0,0]).slice();
+    const alignT=Math.min(1,a.kamikazeClock/3);
+    const center=screenPoint(a.pos);
+    const xProbe=screenPoint([a.pos[0]+10,a.pos[1],a.pos[2]]);
+    const yProbe=screenPoint([a.pos[0],a.pos[1]+10,a.pos[2]]);
+    let arrived=false;
+    if(center&&xProbe&&yProbe){
+     const jx=(xProbe[0]-center[0])/10;
+     const jy=(yProbe[1]-center[1])/10;
+     const halfWidth=Math.abs(jx)*34+.035;
+     const halfHeight=Math.abs(jy)*26+.045;
+     const left=Math.min(.43,halfWidth+.055),right=1-left;
+     const top=Math.min(.42,halfHeight+.055),bottom=1-top;
+     const targetX=a.kamikazeChargeSide<0?left:right;
+     const targetY=Math.max(top,Math.min(bottom,.43));
+     const ex=targetX-center[0],ey=targetY-center[1];
+     const remaining=Math.max(.35,3-a.kamikazeClock);
+     // Proportional arrival speed: fast at first, taper to a gentle approach.
+     // After three seconds, keep correcting rather than triggering off-screen.
+     const wx=ex/(Math.abs(jx)>1e-6?jx:1e-6);
+     const wy=ey/(Math.abs(jy)>1e-6?jy:1e-6);
+     const desiredX=Math.max(-185,Math.min(185,wx*Math.min(2.35,1.45/remaining)));
+     const desiredY=Math.max(-150,Math.min(150,wy*Math.min(2.35,1.45/remaining)));
+     // Early in alignment, carry a small amount of nose-led motion into the
+     // launch-point approach. Fade it out before arrival so the existing
+     // screen-edge destination and three-second timing remain unchanged.
+     const noseLead=.22*Math.pow(1-alignT,2);
+     const noseSpeed=Math.max(75,Math.min(175,Math.hypot(desiredX,desiredY)));
+     const steerX=desiredX*(1-noseLead)+a.kamikazeDirection[0]*noseSpeed*noseLead;
+     const steerY=desiredY*(1-noseLead)+a.kamikazeDirection[1]*noseSpeed*noseLead;
+     const blend=1-Math.exp(-dt*(1.65+1.1*alignT));
+     a.kamikazeAlignVelocity[0]+=(steerX-a.kamikazeAlignVelocity[0])*blend;
+     a.kamikazeAlignVelocity[1]+=(steerY-a.kamikazeAlignVelocity[1])*blend;
+     // Avoid approaching the camera while preparing: changing depth would
+     // move the screen-space destination and enlarge the aircraft.
+     const depthTarget=0;
+     a.kamikazeAlignVelocity[2]+=(depthTarget-a.kamikazeAlignVelocity[2])*(1-Math.exp(-dt*4));
+     // Verify both projected arrival and low residual sideways drift.
+     const visible=center[0]>=left-.012&&center[0]<=right+.012&&center[1]>=top-.012&&center[1]<=bottom+.012;
+     // Reach the launch area with momentum: do not require nearly zero drift.
+     arrived=visible&&Math.abs(ex)<.042&&Math.abs(ey)<.048;
+    }else{
+     // Off-screen: keep the alignment phase active and steer back toward the player.
+     const blend=1-Math.exp(-dt*3);
+     for(let k=0;k<3;k++)a.kamikazeAlignVelocity[k]+=(a.kamikazeDirection[k]*110-a.kamikazeAlignVelocity[k])*blend;
+    }
+    // Alignment also predicts the mountain height ahead, and eases into
+    // a climb instead of hitting a flat-height collision clamp.
+    const climbing=kamikazeCommittedClimb(a,a.kamikazeAlignVelocity,dt);
+    if(climbing){
+     // Override the launch-point descent until the whole mountain is clear.
+     const rise=145;
+     a.kamikazeAlignVelocity[1]+=(rise-a.kamikazeAlignVelocity[1])*(1-Math.exp(-dt*4.2));
+     arrived=false;
+    }
+    for(let k=0;k<3;k++)a.pos[k]+=a.kamikazeAlignVelocity[k]*dt;
+    // Screen-space position is rechecked AFTER moving, never rely on a timer alone.
+    const finalScreen=screenPoint(a.pos);
+    if(a.kamikazeClock>=3&&arrived&&finalScreen&&
+       finalScreen[0]>.045&&finalScreen[0]<.955&&finalScreen[1]>.06&&finalScreen[1]<.94){
+     a.kamikazePhase='flash';a.kamikazeClock=0;
+    }
+   }else if(a.kamikazePhase==='flash'){
+    // Hold the screen-visible launch point for a 0.30s expanding white flash.
+    // Maintain world-relative depth while the player continues forward.
+    a.pos[2]+=pos[2]-(a.kamikazePlayerZ??pos[2]);
+    a.kamikazePlayerZ=pos[2];
+    if(a.kamikazeClock>=.30){
+     // Snapshot the player's ACTUAL movement at launch. Lead lateral motion
+     // once, then lock the ram heading: changing direction can still dodge.
+     // Respect the player's movement limits rather than extrapolating outside
+     // the playable space; use the actual forward velocity, not a second offset.
+     const launchPlayerVelocity=playerVelocity.slice();
+     const ramMaxSpeed=740,ramAccel=4.5;
+     const entrySpeed=Math.max(90,Math.min(240,Math.hypot(...a.kamikazeAlignVelocity)));
+     const travel=t=>ramMaxSpeed*t+(entrySpeed-ramMaxSpeed)*(-Math.expm1(-ramAccel*t))/ramAccel;
+     const futurePlayer=t=>[
+      Math.max(-70,Math.min(70,pos[0]+launchPlayerVelocity[0]*t)),
+      Math.max(250,Math.min(520,pos[1]+launchPlayerVelocity[1]*t)),
+      pos[2]+launchPlayerVelocity[2]*t
+     ];
+     const futureDistance=t=>Math.hypot(...futurePlayer(t).map((v,k)=>v-a.pos[k]));
+     let low=0,high=5;
+     for(let i=0;i<36;i++){
+      const mid=(low+high)*.5;
+      if(travel(mid)<futureDistance(mid))low=mid;else high=mid;
+     }
+     const interceptTime=(low+high)*.5;
+     const intercept=futurePlayer(interceptTime);
+     a.kamikazeDirection=norm(intercept.map((v,k)=>v-a.pos[k]));
+     a.kamikazeChargeSpeed=entrySpeed;
+     a.kamikazeChargeVelocity=a.kamikazeDirection.map(v=>v*entrySpeed);
+     a.kamikazePhase='charge';a.kamikazeClock=0;a.kamikazeRamContactDone=false;
+    }
+   }else{
+    // Locked heading: accelerate only the scalar speed, never steer mid-charge.
+    const chargeSpeed=740;
+    if(!Number.isFinite(a.kamikazeChargeSpeed))a.kamikazeChargeSpeed=150;
+    a.kamikazeChargeSpeed+=(chargeSpeed-a.kamikazeChargeSpeed)*(1-Math.exp(-dt*4.5));
+    a.kamikazeChargeVelocity=a.kamikazeDirection.map(v=>v*a.kamikazeChargeSpeed);
+    for(let k=0;k<3;k++)a.pos[k]+=a.kamikazeChargeVelocity[k]*dt;
+    // A charging plane is unstoppable. Register at most one player collision,
+    // but keep the exact locked flight vector after either a hit or a miss.
+    // Segment-to-player distance prevents fast charges tunnelling through.
+    const segment=a.pos.map((v,k)=>v-old[k]);
+    const relative=pos.map((v,k)=>v-old[k]);
+    const lenSq=dot(segment,segment);
+    const u=lenSq>1e-8?Math.max(0,Math.min(1,dot(relative,segment)/lenSq)):0;
+    const closest=old.map((v,k)=>v+segment[k]*u);
+    if(!a.kamikazeRamContactDone&&Math.hypot(...closest.map((v,k)=>v-pos[k]))<28){
+     a.kamikazeRamContactDone=true;
+     pendingKamikazeImpacts.push({from:old,to:a.pos.slice(),velocity:a.kamikazeChargeVelocity.slice(),heading:a.kamikazeDirection.slice(),dt});
+    }
+    // Retire silently only after flying well beyond the player or far away.
+    // This is NOT a kill: no explosion, hit points, or destroyed-count reward.
+    if(a.kamikazeClock>7||a.pos[2]>pos[2]+900){
+     a.destroyed=true;a.respawnDelay=ENEMY_RESPAWN_DELAY;
+    }
+   }
+  }
+  a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(.0001,dt));
+  a.roll+=(Math.max(-.5,Math.min(.5,-a.velocity[0]*.004))-a.roll)*(1-Math.exp(-dt*3));
+  return;
+ }
+
+ if(a.formation){
+  // Shared formation route, with independently delayed and slightly drifting wingmen.
+  const old=a.pos.slice(),f=a.formation,slot=a.formationSlot;
+  const offsets=[[0,0,0],[-65,-12,48],[65,-12,48]];
+  const o=offsets[slot];
+  const t=time-f.start;
+  const lag=a.formationLag||0;
+  const stagger=t-lag;
+  const centerX=f.lane+75*Math.sin(stagger*.32);
+  const centerY=313.54+f.altitude+27*Math.sin(stagger*.43);
+  const driftX=slot?9*Math.sin(t*(.49+slot*.065)+a.formationPhase):0;
+  const driftY=slot?6*Math.sin(t*(.57+slot*.075)+a.formationPhase):0;
+  const depthDrift=slot?7*Math.sin(t*.4+a.formationPhase):0;
+  f.distance=Math.max(360,f.distance-95*dt);
+  const target=formationSafeTarget([centerX+o[0]+driftX,centerY+o[1]+driftY,pos[2]-f.distance+o[2]+depthDrift]);
+  // Follow the player's forward travel exactly, otherwise the formation drifts
+  // out of the camera view during smooth following.
+  const playerZDelta=pos[2]-(a.formationPlayerZ??pos[2]);
+  a.formationPlayerZ=pos[2];
+  a.pos[2]+=playerZDelta;
+  const follow=1-Math.exp(-dt*(slot===0?2.1:1.6+slot*.18));
+  for(let k=0;k<3;k++)a.pos[k]+=(target[k]-a.pos[k])*follow;
+  // Recover promptly from camera movements while preserving normal easing.
+  const projected=screenPoint(a.pos);
+  if(projected&&(projected[0]<.07||projected[0]>.93||projected[1]<.09||projected[1]>.91)){
+   const safe=formationSafeTarget(a.pos);
+   const rescue=1-Math.exp(-dt*7);
+   a.pos[0]+=(safe[0]-a.pos[0])*rescue;
+   a.pos[1]+=(safe[1]-a.pos[1])*rescue;
+  }
+  a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(dt,.0001));
+  a.yaw=0;
+  const desiredRoll=Math.max(-.51,Math.min(.51,-a.velocity[0]*.009));
+  a.roll+=(desiredRoll-a.roll)*(1-Math.exp(-dt*2.5));
+  a.speed=405;
+  return;
+ }
+ if(a.fortress){
+  const old=a.pos.slice();
+  // Retain the original distant approach, blending continuously into station-keeping.
+  // The blend starts near 470 units; no positional snap or instant velocity reversal.
+  const distance=pos[2]-a.pos[2];
+  // Descend from high above the frame, starting once the fortress approaches view.
+  a.fortressIntroDescent=Math.min(1,a.fortressIntroDescent+dt/4.1);
+  // Ease the actual dive through a continuous acceleration and flare-out.
+  const diveT=a.fortressIntroDescent;
+  const descent=diveT*diveT*diveT*(diveT*(diveT*6-15)+10);
+  // Keep the nose down through the dive, then pull up gently as the aircraft levels.
+  const liftT=Math.max(0,Math.min(1,(descent-.12)/.88));
+  const lift=liftT*liftT*(3-2*liftT);
+  const targetPitch=1.05*(1-lift)-.10*Math.pow(Math.sin(Math.PI*descent),4);
+  a.fortressIntroPitch+=(targetPitch-a.fortressIntroPitch)*(1-Math.exp(-dt*3.0));
+  // Match the transition into combat spacing to the final pull-up and turn.
+  if(a.fortressIntroDescent>=.62)a.fortressBlend=Math.min(1,a.fortressBlend+dt/5.5);
+  const baseBlend=a.fortressBlend*a.fortressBlend*(3-2*a.fortressBlend);
+  const blend=Math.max(baseBlend,.9*Math.sin(Math.PI*a.fortressIntroTurn));
+  a.fortressApproaching=a.fortressBlend<1;
+  if(a.fortressMoveClock<=0){
+   a.fortressMoveClock=3+Math.random()*2;
+   a.fortressTargetOffset=[(Math.random()-.5)*150,(Math.random()-.5)*70,300+Math.random()*85];
+  }
+  a.fortressMoveClock-=dt;
+  // During the entrance turn, move closer before easing back to normal combat range.
+  const introTurnT=a.fortressIntroTurn;
+  const introTurnEase=introTurnT*introTurnT*introTurnT*(introTurnT*(introTurnT*6-15)+10);
+  const turnApproach=210*Math.sin(Math.PI*introTurnEase);
+  // Lateral and vertical movement is independent of the player; only forward range tracks the player.
+  const target=[a.fortressAnchor[0]+a.fortressTargetOffset[0],a.fortressAnchor[1]+a.fortressTargetOffset[1]+400*(1-descent),pos[2]-(a.fortressTargetOffset[2]-turnApproach)];
+  // Center the boss on the actual camera projection during the middle of its turn.
+  // Adjust only X/Y; the approved close-pass distance and Z trajectory stay unchanged.
+  const centerWeight=Math.pow(Math.sin(Math.PI*introTurnEase),2);
+  if(centerWeight>.0001){
+   const projected=screenPoint(target);
+   const px=screenPoint([target[0]+10,target[1],target[2]]);
+   const py=screenPoint([target[0],target[1]+10,target[2]]);
+   if(projected&&px&&py){
+    const sx=(px[0]-projected[0])/10,sy=(py[1]-projected[1])/10;
+    if(Math.abs(sx)>.00001&&Math.abs(sy)>.00001){
+     const centerX=Math.max(-260,Math.min(260,(.5-projected[0])/sx));
+     const centerY=Math.max(-260,Math.min(260,(.5-projected[1])/sy));
+     target[0]+=centerX*centerWeight;
+     target[1]+=centerY*centerWeight;
+    }
+   }
+  }
+  const approach=[a.pos[0]+(a.fortressAnchor[0]-a.pos[0])*(1-Math.exp(-dt*.28)),
+                  a.pos[1]+(a.fortressAnchor[1]+400*(1-descent)-a.pos[1])*(1-Math.exp(-dt*2.2)),
+                  a.pos[2]-405*dt];
+  const holdFactor=1-Math.exp(-dt*(.8+3.0*Math.sin(Math.PI*introTurnEase)));
+  // Match the player's world displacement before easing the relative offset.
+  // Without this feed-forward, the 435-unit/s camera scroll creates a huge
+  // following error and eventually leaves the fortress behind the player.
+  const playerDelta=[pos[0]-a.playerPosPrev[0],pos[1]-a.playerPosPrev[1],pos[2]-a.playerPosPrev[2]];
+  a.playerPosPrev=pos.slice();
+  for(let k=0;k<3;k++){
+   const carried=a.pos[k]+(k===2?playerDelta[2]:0);
+   const hold=carried+(target[k]-carried)*holdFactor;
+   a.pos[k]=approach[k]*(1-blend)+hold*blend;
+  }
+  a.pos[2]=Math.min(a.pos[2],pos[2]-(300-turnApproach));
+  a.velocity=a.pos.map((v,k)=>(v-old[k])/Math.max(dt,.0001));
+  // Begin the heading change during the final part of the descent, not after it.
+  if(a.fortressIntroDescent>=.62)a.fortressIntroTurn=Math.min(1,a.fortressIntroTurn+dt/5.5);
+  const turnT=a.fortressIntroTurn;
+  const turn=turnT*turnT*turnT*(turnT*(turnT*6-15)+10);
+  const targetYaw=Math.PI*(1-turn);
+  a.yaw+=(targetYaw-a.yaw)*(1-Math.exp(-dt*3.0));
+  // The aircraft banks into the turn and rolls level again as it completes it.
+  a.fortressBankSpeed+=(a.velocity[0]-a.fortressBankSpeed)*(1-Math.exp(-dt*2.0));
+  const movementBank=Math.max(-.58,Math.min(.58,-a.fortressBankSpeed*.008));
+  const turnBank=.72*Math.sin(Math.PI*turn);
+  const desiredBank=movementBank+turnBank;
+  a.roll+=(desiredBank-a.roll)*(1-Math.exp(-dt*2.0));
+  return;
+ }
+ const before=a.pos.slice();
+ // Each cannon attack consists of exactly 3 quick lateral/vertical dodges.
+ if(a.cannon){
+  a.dodgeWait-=dt;
+  if(a.dodgeWait<=0&&!a.dodge){
+   if(!a.dodgeRemaining)a.dodgeRemaining=3;
+   if(a.dodgeRemaining===2){
+    a.cannonWarningActive=true;
+   }
+   // Plan a fixed-length dodge away from the player, entirely inside the rectangle.
+   const desired=cannonFixedDistanceEscapeDestination(a.pos);
+   a.dodge={elapsed:0,dx:desired[0]-a.pos[0],dy:desired[1]-a.pos[1],movedX:0,movedY:0};
+   a.dodgeWait=Infinity;
+  }
+ }
+ // Track player forward movement, then gently close to a safe 300-unit gap.
+ // The previous player position is initialized on spawn; no global `speed` lookup.
+ const prevPlayerZ=a.stationPlayerZ===undefined?pos[2]:a.stationPlayerZ;
+ a.stationPlayerZ=pos[2];
+ a.pos[2]+=pos[2]-prevPlayerZ;
+ const gap=pos[2]-a.pos[2];
+ const approach=1-Math.exp(-dt*.85);
+ a.pos[2]+=(gap-300)*approach;
+ // Never cross the 300-unit near plane.
+ a.pos[2]=Math.min(a.pos[2],pos[2]-300);
+ const respawn=false;
+ const phase=a.phase??0,skill=a.skill??1;
+ const driftRate=.35+.16*skill,climbRate=.42+.13*skill;
+ let wantedX=(a.lane??0)+(100+45*skill)*Math.sin(time*driftRate+phase)
+              +35*Math.sin(time*.21+phase*1.7);
+ let wantedY=313.54+(a.altitude??0)+(42+18*skill)*Math.sin(time*climbRate+phase*1.3);
+ // Confine the intended flight path to a comfortably inset screen rectangle.
+ // Correct the destination, not the aircraft itself: no hard edge snaps.
+ const candidate=[wantedX,wantedY,a.pos[2]];
+ const screen=screenPoint(candidate);
+ if(screen){
+  const dx=screenPoint([wantedX+10,wantedY,a.pos[2]]);
+  const dy=screenPoint([wantedX,wantedY+10,a.pos[2]]);
+  if(dx&&dy){
+   const px=(dx[0]-screen[0])/10,py=(dy[1]-screen[1])/10;
+   const safeX=Math.max(a.cannon?.035:.16,Math.min(a.cannon?.965:.84,screen[0]));
+   const safeY=Math.max(a.cannon?.028:.18,Math.min(a.cannon?.500:.82,screen[1]));
+   if(Math.abs(px)>1e-6)wantedX+=(safeX-screen[0])/px;
+   if(Math.abs(py)>1e-6)wantedY+=(safeY-screen[1])/py;
+  }
+ }
+ // Move smoothly toward the screen-safe destination, including when recovering
+ // from an initial spawn near the edge.
+ const follow=1-Math.exp(-dt*1.35);
+ a.pos[0]+=(wantedX-a.pos[0])*follow;
+ a.pos[1]+=(wantedY-a.pos[1])*follow;
+ if(a.cannon&&a.dodge){
+  const d=a.dodge,prev=Math.min(1,d.elapsed/.22);
+  d.elapsed+=dt;
+  const next=Math.min(1,d.elapsed/.22);
+  const ease=t=>t*t*(3-2*t);
+  const oldX=a.pos[0],oldY=a.pos[1];
+  // Follow the preselected straight segment; keep the rectangular clamp only
+  // as a safety guard against the ordinary-flight drift added each frame.
+  a.pos[0]+=d.dx*(ease(next)-ease(prev));
+  a.pos[1]+=d.dy*(ease(next)-ease(prev));
+  d.movedX+=a.pos[0]-oldX;d.movedY+=a.pos[1]-oldY;
+  if(next>=1){
+   // Make the dodge destination the new center of the normal flight path.
+   a.lane+=d.movedX;
+   a.altitude+=d.movedY;
+   a.dodge=null;
+   a.dodgeRemaining--;
+   if(a.dodgeRemaining>0)a.dodgeWait=.08;
+   else a.dodgeWait=1+Math.random();
+   // Fire only after the last dodge; projectile is non-homing.
+   if(a.dodgeRemaining===0){
+    a.cannonWarningActive=false;
+    const origin=[a.pos[0],a.pos[1]-2,a.pos[2]+12];
+    // Predict the player position at impact; the shell remains unguided after firing.
+    const shellSpeed=610;
+    // Solve the actual 3D interception time, including the player's forward motion.
+    const r=pos.map((v,k)=>v-origin[k]),v=playerVelocity;
+    const A=dot(v,v)-shellSpeed*shellSpeed,B=2*dot(r,v),C=dot(r,r);
+    const disc=B*B-4*A*C;
+    const roots=disc>=0&&Math.abs(A)>1e-8?[(-B-Math.sqrt(disc))/(2*A),(-B+Math.sqrt(disc))/(2*A)]:[];
+    const travel=roots.filter(t=>t>0).sort((a,b)=>a-b)[0]??Math.hypot(...r)/shellSpeed;
+    const aim=pos.map((x,k)=>x+v[k]*travel);
+    const direction=norm(aim.map((x,k)=>x-origin[k]));
+    cannonShots.push({pos:origin,vel:direction.map(x=>x*shellSpeed),age:0,smokeClock:0});
+   }
+  }
+ }
+ // Final screen-space boundary also covers ordinary drift and mid-dodge movement.
+ // Use the projected mesh extent, not merely the aircraft center.
+ if(a.cannon){
+  const bounded=cannonRectangleStep(before,a.pos[0]-before[0],a.pos[1]-before[1]);
+  const correctionX=bounded[0]-a.pos[0],correctionY=bounded[1]-a.pos[1];
+  a.pos[0]=bounded[0];a.pos[1]=bounded[1];
+  // Keep the persistent dodge baseline consistent with any boundary correction.
+  a.lane+=correctionX;a.altitude+=correctionY;
+ }
+ a.velocity=respawn?[0,0,-405]:a.pos.map((v,i)=>(v-before[i])/Math.max(dt,.0001));
+ a.yaw=0;a.roll=-.36*Math.cos(time*driftRate+phase);a.speed=405;
+}
+// Separate ventral turret: aim in world space while its pivot follows the aircraft.
+// Local barrel axis is -Z; pivot is (0,-6,0) in aircraft coordinates.
+function gatlingMount(a){
+ const m=aircraftModel(a);
+ return [a.pos[0]-6*m[4],a.pos[1]-6*m[5],a.pos[2]-6*m[6]];
+}
+// Reuse the cannon's actual 3D interception solution (including playerVelocity).
+// Do not reconstruct a screen ray: it diverges from the real collision position.
+function cannonInterceptDirection(origin,shellSpeed=610,targetPos=pos,targetVelocity=playerVelocity){
+ const r=targetPos.map((v,k)=>v-origin[k]),v=targetVelocity;
+ const A=dot(v,v)-shellSpeed*shellSpeed,B=2*dot(r,v),C=dot(r,r);
+ const disc=B*B-4*A*C;
+ const roots=disc>=0&&Math.abs(A)>1e-8?[(-B-Math.sqrt(disc))/(2*A),(-B+Math.sqrt(disc))/(2*A)]:[];
+ const travel=roots.filter(t=>t>0).sort((a,b)=>a-b)[0]??Math.hypot(...r)/shellSpeed;
+ const aim=targetPos.map((x,k)=>x+v[k]*travel);
+ return norm(aim.map((x,k)=>x-origin[k]));
+}
+// Delay the *completed cannon aim*, not the inputs to its lead predictor.
+// The cannon solution uses the player's actual inertial world velocity.
+const GATLING_AIM_DELAY=0.8;
+let gatlingAimTime=0;
+function updateGatlingAim(a){
+ if(!a.gatling||a.destroyed)return;
+ // Save the cannon's current intercept direction (position + inertial velocity).
+ const current=cannonInterceptDirection(gatlingMount(a),610,pos,gatlingPredictVelocity);
+ const history=a.gatlingAimHistory||(a.gatlingAimHistory=[]);
+ history.push({t:gatlingAimTime,d:current});
+ const targetTime=gatlingAimTime-GATLING_AIM_DELAY;
+ while(history.length>2&&history[1].t<targetTime)history.shift();
+ if(history.length<2||targetTime<=history[0].t){
+  a.gatlingAim=history[0].d.slice();
+  return;
+ }
+ const before=history[0],after=history[1];
+ const t=Math.max(0,Math.min(1,(targetTime-before.t)/Math.max(1e-6,after.t-before.t)));
+ a.gatlingAim=norm(before.d.map((v,k)=>v+(after.d[k]-v)*t));
+}
+function gatlingTurretModel(a){
+ const forward=norm(a.gatlingAim||[0,0,-1]);
+ // Build a stable orthonormal frame, with local -Z pointing at the player.
+ const axis=forward.map(v=>-v),reference=Math.abs(axis[1])>.94?[0,0,1]:[0,1,0];
+ const right=norm(cross(reference,axis)),up=cross(axis,right),p=gatlingMount(a);
+ return [right[0],right[1],right[2],0,up[0],up[1],up[2],0,axis[0],axis[1],axis[2],0,...p,1];
+}
+function kamikazeModel(a){
+ const dir=norm(a.kamikazeDirection||[0,0,-1]);
+ const z=dir.map(v=>-v);
+ // In evasion, alternate between showing the triangular top and its side.
+ // Banking changes the aircraft's orientation, never its forward flight vector.
+ const toPlayer=norm(pos.map((v,k)=>v-a.pos[k]));
+ const worldUp=[0,1,0];
+ const side=norm(cross(worldUp,z));
+ const phase=(a.kamikazeClock||0)*1.35+(a.kamikazeWanderPhase||0);
+ const bank=Math.sin(phase)*.94;
+ const topFacing=norm(toPlayer.map((v,k)=>v*.72+worldUp[k]*.28));
+ const facing=a.kamikazePhase==='evade'
+  ?norm(topFacing.map((v,k)=>v*(1-Math.abs(bank)*.9)+side[k]*bank*.9))
+  :(Math.abs(z[1])>.95?[0,0,1]:worldUp);
+ // Blend the real pre-alignment orientation into the charge roll reference.
+ // Project onto the CURRENT nose plane so steering remains independent of roll.
+ // The initial frame is exactly continuous even when the craft was banking.
+ let rollReference=facing;
+ if(a.kamikazePhase!=='evade'&&a.kamikazeRollEntryUp){
+  const t=Math.min(1,(a.kamikazeClock||0)/.85);
+  const blend=t*t*(3-2*t);
+  const entry=a.kamikazeRollEntryUp;
+  rollReference=entry.map((v,k)=>v*(1-blend)+facing[k]*blend);
+ }
+ let upProjected=rollReference.map((v,k)=>v-z[k]*dot(rollReference,z));
+ if(Math.hypot(...upProjected)<.01)upProjected=facing.map((v,k)=>v-z[k]*dot(facing,z));
+ const y=norm(Math.hypot(...upProjected)>.01?upProjected:[0,1,0]);
+ const x=norm(cross(y,z));
+ // Rotate the visual basis around the local forward axis; collision and flight direction stay unchanged.
+ const spin=a.kamikazePhase==='evade'?0:(a.kamikazeSpinAngle||0);
+ const cs=Math.cos(spin),sn=Math.sin(spin);
+ const rx=x.map((v,k)=>v*cs+y[k]*sn);
+ const ry=y.map((v,k)=>v*cs-x[k]*sn);
+ return [rx[0],rx[1],rx[2],0,ry[0],ry[1],ry[2],0,z[0],z[1],z[2],0,...a.pos,1];
+}
+// Four launch ports aligned to the existing red gun housings on the boss model.
+// Local coordinates are transformed by the same model matrix as the rendered aircraft.
+function fortressMissileLaunchPosition(a,remaining){
+ const ports=[[-36,8,-17],[36,8,-17],[-66,0,8],[66,0,8]];
+ const local=ports[remaining%ports.length],m=aircraftModel(a);
+ return [0,1,2].map(i=>m[12+i]+m[i]*local[0]+m[4+i]*local[1]+m[8+i]*local[2]);
+}
+function aircraftModel(a){
+ if(a.kamikaze)return kamikazeModel(a);
+ const cy=Math.cos(a.yaw),sy=Math.sin(a.yaw),cr=Math.cos(a.roll),sr=Math.sin(a.roll);
+ const p=a.fortress?(a.fortressIntroPitch||0):0,cp=Math.cos(p),sp=Math.sin(p);
+ const right=[cy,0,sy],up=[sy*sp,cp,-cy*sp],forward=[-sy*cp,sp,cy*cp];
+ const rr=right.map((v,i)=>v*cr+up[i]*sr),uu=up.map((v,i)=>up[i]*cr-right[i]*sr);
+ return [rr[0],rr[1],rr[2],0,uu[0],uu[1],uu[2],0,forward[0],forward[1],forward[2],0,a.pos[0],a.pos[1],a.pos[2],1];
+}
+function draw(m){gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.bindBuffer(gl.ARRAY_BUFFER,m.cb);gl.vertexAttribPointer(C,3,gl.FLOAT,false,0,0);gl.drawArrays(gl.TRIANGLES,0,m.n)}function norm(v){let l=Math.hypot(...v)||1;return v.map(x=>x/l)}function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]}function dot(a,b){return a.reduce((s,x,i)=>s+x*b[i],0)}function perspective(fov,asp,n,f){let t=1/Math.tan(fov/2);return[t/asp,0,0,0,0,t,0,0,0,0,(f+n)/(n-f),-1,0,0,2*f*n/(n-f),0]}function look(eye,target,up){let z=norm(eye.map((v,i)=>v-target[i])),x=norm(cross(up,z)),y=cross(z,x);return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]}function mul(a,b){let o=new Array(16).fill(0);for(let j=0;j<4;j++)for(let i=0;i<4;i++)for(let k=0;k<4;k++)o[j*4+i]+=a[k*4+i]*b[j*4+k];return o}let visualAim=[0,0,-1];let playerVelocity=[0,0,-435];let gatlingPredictVelocity=[0,0,-435];let pos=[0,313.54,0],yaw=0,pitch=0,roll=0,joy=[0,0],smoothJoy=[0,0],cam=[0,339.54,43],last=performance.now(),previousCameraPlaneX=0,previousCameraPlaneY=313.54;
+let shots=[],hitEffects=[],fireCooldown=0,hitCount=0,muzzleSide=1;const shotLayer=document.getElementById('shotLayer');
+const cannonWarningRing=document.createElement('div');
+cannonWarningRing.className='missileRing';
+cannonWarningRing.style.cssText='display:none;width:100px;height:100px;border-width:4px;z-index:3;animation-duration:0.1666667s;';
+shotLayer.appendChild(cannonWarningRing);
+// All explosion debris share one 2D draw surface instead of one DOM element per fragment.
+const debrisCanvas=document.createElement('canvas');
+debrisCanvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+shotLayer.insertBefore(debrisCanvas,shotLayer.firstChild);
+const debrisCtx=debrisCanvas.getContext('2d',{alpha:true});
+// Gun tracers use WebGL depth testing so the player's aircraft correctly occludes them.
+const tracerVB=gl.createBuffer(),tracerCB=gl.createBuffer();
+function drawWorldTracers(segments,pv){
+ if(!segments.length)return;
+ const vertices=[],colors=[];
+ for(const [tail,head] of segments){
+  const dx=head[0]-tail[0],dy=head[1]-tail[1],dz=head[2]-tail[2];
+  const length=Math.hypot(dx,dy,dz)||1;
+  // Camera-facing ribbon in world coordinates, with a modest tracer width.
+  let sx=dy*(cam[2]-tail[2])-dz*(cam[1]-tail[1]);
+  let sy=dz*(cam[0]-tail[0])-dx*(cam[2]-tail[2]);
+  let sz=dx*(cam[1]-tail[1])-dy*(cam[0]-tail[0]);
+  const sideLength=Math.hypot(sx,sy,sz)||1;
+  sx=sx/sideLength*.55;sy=sy/sideLength*.55;sz=sz/sideLength*.55;
+  const a=[tail[0]-sx,tail[1]-sy,tail[2]-sz],b=[tail[0]+sx,tail[1]+sy,tail[2]+sz];
+  const c=[head[0]+sx,head[1]+sy,head[2]+sz],d=[head[0]-sx,head[1]-sy,head[2]-sz];
+  for(const point of [a,b,c,a,c,d]){vertices.push(...point);colors.push(1,.9,.4)}
+ }
+ gl.uniformMatrix4fv(VP,false,new Float32Array(pv));
+ gl.bindBuffer(gl.ARRAY_BUFFER,tracerVB);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(vertices),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);
+ gl.bindBuffer(gl.ARRAY_BUFFER,tracerCB);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(C,3,gl.FLOAT,false,0,0);
+ gl.drawArrays(gl.TRIANGLES,0,vertices.length/3);
+}
+
+const stick=document.getElementById('stick'),knob=document.getElementById('knob');
+let pointer=null,originX=0,originY=0;
+let swipeStart=0,swipeSamples=[],tapMaxTravel=0,tapFirePending=false;
+let dashTime=0,dashDuration=.51,dashVX=0,dashVY=0,dashRoll=0,queuedRolls=[],nextRollAllowedAt=0,rollTail=0,rollTailElapsed=0,bankRoll=0;
+let driftVX=0,driftVY=0,steerVX=0,steerVY=0,hitVX=0,hitVY=0,hitVZ=0;
+let rollEntryVX=0,rollEntryVY=0,lastAutoVX=0,lastAutoVY=0;
+let autoApproachTarget=null,autoProjection=null;
+let autoMoveBlend=0; // Smoothly engage automatic movement after manual drag/roll.
+let dragHoldUntil=0,dragHoldVX=0,dragHoldVY=0; // Preserve released drag velocity for 0.5 seconds.
+// Forward half of a 3D ellipsoid centered on the aircraft: 200 forward, 30 sideways/up/down.
+// The aircraft's forward direction is negative world Z in this flight model.
+function missileInRollSlowZone(missilePos){
+ const dx=missilePos[0]-pos[0],dy=missilePos[1]-pos[1],forward=pos[2]-missilePos[2];
+ return forward>=0&&(forward*forward)/(NEAR_MISS_FORWARD*NEAR_MISS_FORWARD)
+  +(dx*dx+dy*dy)/(NEAR_MISS_SIDE*NEAR_MISS_SIDE)<=1;
+}
+function enemyProjectileInRollSlowZone(){
+ return enemyProjectilePools.some(pool=>pool.some(shot=>missileInRollSlowZone(shot.pos)));
+}
+function triggerRollSlowMotion(now){
+ if(performance.now()<playerInvulnerableUntil||rollSlowTriggered||!enemyProjectileInRollSlowZone())return;
+ nearMissSlowUntil=now+NEAR_MISS_TIME;
+ rollSlowTriggered=true;
+}
+function startRoll(nx,ny){
+ // Trigger once per roll when a missile is inside the forward half-ellipsoid.
+ rollSlowTriggered=false;
+ triggerRollSlowMotion(performance.now());
+ // Carry the velocity immediately before the roll into its first 0.2 seconds.
+ rollEntryVX=driftVX+lastAutoVX;rollEntryVY=driftVY+lastAutoVY;
+ dashTime=dashDuration;rollTailElapsed=0;rollTail=0;
+ dashVX=nx*(145*2/3)*1.5*1.3;dashVY=ny*(125*2/3)*1.5*1.3;
+ dashRoll=nx===0?0:-Math.sign(nx)*Math.PI*2;
+ joy=[0,0];smoothJoy=[0,0];
+}
+// A roll is only decided on release. Track actual pointer movement; pointerup
+// coordinates alone must never turn a stationary release into a swipe.
+function sampleSwipe(e){
+ const t=performance.now();
+ const last=swipeSamples[swipeSamples.length-1];
+ if(last&&Math.hypot(e.clientX-last.x,e.clientY-last.y)<.5)return;
+ swipeSamples.push({x:e.clientX,y:e.clientY,t});
+ while(swipeSamples.length>2&&t-swipeSamples[0].t>180)swipeSamples.shift();
+}
+function performSwipe(direction){
+ if(!direction)return;
+ const [nx,ny]=direction;
+ if(Math.abs(nx)<.28&&Math.abs(ny)<.28)return;
+ if(dashTime>0||performance.now()<nextRollAllowedAt){
+  // Keep one intentional swipe until the current roll and 0.2s gap end.
+  if(queuedRolls.length===0)queuedRolls.push([nx,ny]);
+ }else startRoll(nx,ny);
+}
+function trySwipe(e){
+ const now=performance.now(),samples=swipeSamples;
+ if(samples.length<2)return;
+ const end=samples[samples.length-1];
+ // Releasing after slowing/stopping is not a flick, regardless of how far
+ // the finger moved during the earlier drag.
+ if(now-end.t>75)return;
+ let i=samples.length-2;
+ while(i>0&&end.t-samples[i-1].t<=120)i--;
+ const first=samples[i],duration=end.t-first.t;
+ if(duration<18||duration>140)return;
+ const dx=end.x-first.x,dy=end.y-first.y,dist=Math.hypot(dx,dy);
+ // Short, fast and directionally consistent movement immediately before lift.
+ if(dist<28||dist/duration*1000<600)return;
+ const prev=samples[samples.length-2];
+ const tailDX=end.x-prev.x,tailDY=end.y-prev.y;
+ if(dx*tailDX+dy*tailDY<=0)return;
+ performSwipe([dx/dist,-dy/dist]);
+}
+function updateStick(e){
+ const rawX=e.clientX-originX,rawY=e.clientY-originY;
+ const distance=Math.hypot(rawX,rawY);
+ // 360-degree direction is retained; outside a small dead zone the
+ // joystick is digital (full strength), regardless of finger distance.
+ const deadZone=5;
+ const dx=distance>deadZone?rawX/distance:0;
+ const dy=distance>deadZone?rawY/distance:0;
+ joy=[dx,dy];knob.style.transform=`translate(${dx*52}px,${dy*52}px)`;
+}
+window.addEventListener('pointerdown',e=>{
+ if(pointer!==null)return;
+ pointer=e.pointerId;dragHoldUntil=0;originX=e.clientX;originY=e.clientY;joy=[0,0];swipeStart=performance.now();swipeSamples=[{x:e.clientX,y:e.clientY,t:swipeStart}];tapMaxTravel=0;
+ stick.style.left=originX+'px';stick.style.top=originY+'px';stick.style.display='block';
+ try{canvas.setPointerCapture(pointer)}catch(_){}
+},{passive:false});
+window.addEventListener('pointermove',e=>{if(e.pointerId===pointer){tapMaxTravel=Math.max(tapMaxTravel,Math.hypot(e.clientX-originX,e.clientY-originY));sampleSwipe(e);updateStick(e); }} ,{passive:false});
+function release(e){if(e.pointerId!==pointer)return;
+ // A short stationary tap requests one salvo; swipes only perform rolls.
+ const elapsed=performance.now()-swipeStart;
+ if(elapsed<=300&&Math.max(tapMaxTravel,Math.hypot(e.clientX-originX,e.clientY-originY))<=14)tapFirePending=true;
+ else trySwipe(e);
+ // A roll takes priority. Otherwise hold the last drag velocity for 0.5 s.
+ if(dashTime<=0&&tapMaxTravel>14&&Math.hypot(steerVX,steerVY)>0.01){
+  dragHoldVX=steerVX*1.5;dragHoldVY=steerVY*1.5;
+  dragHoldUntil=performance.now()+500;autoMoveBlend=0;
+ }else dragHoldUntil=0;
+ pointer=null;swipeSamples=[];joy=[0,0];stick.style.display='none'}
+window.addEventListener('pointerup',release);window.addEventListener('pointercancel',e=>{if(e.pointerId!==pointer)return;pointer=null;dragHoldUntil=0;swipeSamples=[];joy=[0,0];stick.style.display='none'});
+window.addEventListener('blur',()=>{pointer=null;dragHoldUntil=0;swipeSamples=[];joy=[0,0];stick.style.display='none'});
+window.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')joy[0]=-1;if(e.key==='ArrowRight')joy[0]=1;if(e.key==='ArrowUp')joy[1]=-1;if(e.key==='ArrowDown')joy[1]=1});
+window.addEventListener('keyup',()=>{if(pointer===null)joy=[0,0]});
+// Sparse, translucent world-space clouds. Visual-only; never enter hit detection.
+const distantClouds=[];
+let cloudSpawnWait=1.2;
+const cloudBuffer=gl.createBuffer();
+const cloudVertices=new Float32Array(7*5*6*9);
+function updateDistantClouds(dt){
+ cloudSpawnWait-=dt;
+ if(cloudSpawnWait<=0){
+  cloudSpawnWait=.65+Math.random()*.9;
+  if(distantClouds.length<7){
+   const radius=42+Math.random()*68;
+   const lobes=[];
+   for(let i=0;i<5;i++)lobes.push({x:(Math.random()-.5)*1.6,y:(Math.random()-.5)*.55,r:.48+Math.random()*.52});
+   distantClouds.push({x:pos[0]+(Math.random()-.5)*660,y:pos[1]+(Math.random()-.5)*240,z:pos[2]-1050-Math.random()*350,radius,lobes,age:0,life:7.5+Math.random()*3});
+  }
+ }
+ for(let i=distantClouds.length-1;i>=0;i--){
+  const c=distantClouds[i];c.age+=dt;c.z+=dt*55;
+  if(c.age>c.life||c.z>pos[2]+65)distantClouds.splice(i,1);
+ }
+}
+function drawDistantClouds(pv,view){
+ if(!distantClouds.length)return;
+ const right=[view[0],view[4],view[8]],up=[view[1],view[5],view[9]];
+ let n=0;
+ const clouds=distantClouds.slice().sort((a,b)=>a.z-b.z);
+ for(const c of clouds){
+  const fade=Math.min(1,c.age/.9,(c.life-c.age)/1.4);
+  if(fade<=0)continue;
+  for(const l of c.lobes){
+   const x=c.x+l.x*c.radius,y=c.y+l.y*c.radius*.55,z=c.z;
+   const rx=c.radius*l.r,ry=rx*.34;
+   const opacity=.095*fade;
+   const vertex=(u,v)=>{
+    cloudVertices[n++]=x+right[0]*u*rx+up[0]*v*ry;
+    cloudVertices[n++]=y+right[1]*u*rx+up[1]*v*ry;
+    cloudVertices[n++]=z+right[2]*u*rx+up[2]*v*ry;
+    cloudVertices[n++]=u;cloudVertices[n++]=v;
+    cloudVertices[n++]=.97;cloudVertices[n++]=.98;cloudVertices[n++]=1;
+    cloudVertices[n++]=opacity;
+   };
+   vertex(-1,-1);vertex(1,-1);vertex(1,1);
+   vertex(-1,-1);vertex(1,1);vertex(-1,1);
+  }
+ }
+ if(!n)return;
+ gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+ gl.useProgram(batchSmokeProg);gl.uniformMatrix4fv(batchVP,false,new Float32Array(pv));
+ gl.bindBuffer(gl.ARRAY_BUFFER,cloudBuffer);gl.bufferData(gl.ARRAY_BUFFER,cloudVertices.subarray(0,n),gl.DYNAMIC_DRAW);
+ gl.enableVertexAttribArray(batchP);gl.enableVertexAttribArray(batchUV);gl.enableVertexAttribArray(batchRGBA);
+ gl.vertexAttribPointer(batchP,3,gl.FLOAT,false,36,0);gl.vertexAttribPointer(batchUV,2,gl.FLOAT,false,36,12);gl.vertexAttribPointer(batchRGBA,4,gl.FLOAT,false,36,20);
+ gl.drawArrays(gl.TRIANGLES,0,n/9);
+ gl.disableVertexAttribArray(batchRGBA);
+ gl.depthMask(true);gl.disable(gl.BLEND);
+ gl.useProgram(prog);gl.enableVertexAttribArray(P);gl.enableVertexAttribArray(C);
+}
+// The ONLY authority for enemy-projectile contact with the player.
+// Return true only for the first accepted hit. Never consume or alter the projectile.
+// Projectile flight, drawing and natural expiry remain owned by their existing loops.
+// Diagnostic only: preserve a short trace across same-window document reloads.
+const auditBootAt=performance.now();
+let auditRecord={boots:0,events:[]};
+try { const saved=JSON.parse(sessionStorage.getItem('flightHitAudit441')||'null');
+ if(saved&&Array.isArray(saved.events))auditRecord=saved;
+} catch(e) {}
+auditRecord.boots++;
+const auditBootNumber=auditRecord.boots;
+let auditLastState='0/0/0',auditLastFrameAt=0;
+function auditStore(event){
+ const stamp=new Date().toLocaleTimeString();
+ auditRecord.events.push(stamp+' #'+auditBootNumber+' '+event);
+ auditRecord.events=auditRecord.events.slice(-7);
+ try{sessionStorage.setItem('flightHitAudit441',JSON.stringify(auditRecord));}catch(e){}
+}
+auditStore('起動');
+let playerInvulnerableUntil=0,acceptedPlayerHitCount=0,knockbackImpulseCount=0;
+
+
+// Display-only transition state: preserved between animation frames.
+let crossWasTargeted=false,crossTransitionAt=-Infinity;
+let crossTransitionStartX=0,crossTransitionStartY=0;
+let crossDisplayX=NaN,crossDisplayY=NaN;
+function frame(now){
+ let dt=Math.min(.05,(now-last)/1000);last=now;
+ if(now<nearMissSlowUntil)dt*=NEAR_MISS_SCALE;
+ const holdingDrag=pointer===null&&dashTime<=0&&dragHoldUntil>0&&now<dragHoldUntil;
+ if(dragHoldUntil>0&&!holdingDrag){
+  // Resume the original inertial decay from the exact held velocity.
+  steerVX=dragHoldVX;steerVY=dragHoldVY;dragHoldUntil=0;smoothJoy=[0,0];
+ }
+ const coasting=pointer===null&&joy[0]===0&&joy[1]===0&&dashTime<=0&&!holdingDrag;
+ const inertia=1-Math.exp(-dt/(coasting?.96:.16));
+ for(let i=0;i<2;i++)smoothJoy[i]+=(joy[i]-smoothJoy[i])*inertia;
+ yaw=0;
+ const speed=435;
+ // Ease out as the aircraft approaches the allowed screen-space edges.
+ // The velocity tapers continuously instead of being abruptly clamped.
+ function edgeEase(distance,zone){
+  const t=Math.max(0,Math.min(1,distance/zone));
+  return t*t*(3-2*t);
+ }
+ const dashing=dashTime>0;
+ const dashProgress=dashing?1-dashTime/dashDuration:0;
+ const dashScale=dashing?(.35+.65*Math.sin(Math.PI*Math.max(0,Math.min(1,dashProgress)))):0;
+ // Faster steering with physical velocity smoothing instead of instant speed changes.
+ // Dash contributes an independent impulse; its residual decays after the roll,
+ // while steering remains active and can counteract or redirect the drift.
+ const steeringResponse=1-Math.exp(-dt/(coasting?1.20:.20));
+ if(holdingDrag){steerVX=dragHoldVX;steerVY=dragHoldVY;}
+ else{
+  steerVX+=(smoothJoy[0]*(201/3)-steerVX)*steeringResponse;
+  steerVY+=(-smoothJoy[1]*(171/3)-steerVY)*steeringResponse;
+ }
+ if(dashing){
+  // Blend into the original roll impulse without changing its timing or peak.
+  const entryT=Math.min(1,dashProgress/.2* dashDuration);
+  const entryBlend=entryT*entryT*(3-2*entryT);
+  driftVX=rollEntryVX*(1-entryBlend)+dashVX*dashScale*entryBlend;
+  driftVY=rollEntryVY*(1-entryBlend)+dashVY*dashScale*entryBlend;
+ }else{
+  const drag=Math.exp(-dt/1.72);
+  driftVX*=drag;driftVY*=drag;
+ }
+ // Move toward the selected enemy on screen, rather than toward its world altitude.
+ const autoApproach=!holdingDrag&&pointer===null&&Math.abs(joy[0])<.01&&Math.abs(joy[1])<.01&&!dashing&&autoApproachTarget&&!autoApproachTarget.destroyed;
+ const autoTargetScreen=autoApproach&&autoProjection?projectWorld(autoApproachTarget.pos,autoProjection):null;
+ const autoPlaneScreen=autoTargetScreen?projectWorld(pos,autoProjection):null;
+ const autoVX=autoPlaneScreen?Math.max(-36,Math.min(36,(autoTargetScreen.x-autoPlaneScreen.x)/innerWidth*120)):0;
+ const autoVY=autoPlaneScreen?Math.max(-36,Math.min(36,(autoPlaneScreen.y-autoTargetScreen.y)/innerHeight*120)):0;
+ // Gradually enable automatic movement instead of applying its full velocity
+ // immediately after the finger lifts. Manual and roll velocities stay intact.
+ const autoBlendRate=1-Math.exp(-dt/.65);
+ autoMoveBlend=autoApproach?autoMoveBlend+(1-autoMoveBlend)*autoBlendRate:0;
+ // Preserve the longer manual coast when auto-approach wants to move the
+ // opposite way. As manual speed fades, hand control over continuously.
+ // Roll drift is deliberately excluded to preserve the existing roll behavior.
+ const autoAgainstCoastX=coasting&&steerVX*autoVX<0
+  ?Math.max(0,1-Math.abs(steerVX)/18):1;
+ const autoAgainstCoastY=coasting&&steerVY*autoVY<0
+  ?Math.max(0,1-Math.abs(steerVY)/18):1;
+ const easedAutoVX=autoVX*autoMoveBlend*autoAgainstCoastX;
+ const easedAutoVY=autoVY*autoMoveBlend*autoAgainstCoastY;
+ lastAutoVX=easedAutoVX;lastAutoVY=easedAutoVY;
+ // Knockback velocity decays naturally after the first accepted hit.
+ // No duration gate: subsequent projectiles cannot reapply the impulse.
+ const hitDecay=Math.exp(-dt/0.095);
+ hitVX*=hitDecay;hitVY*=hitDecay;hitVZ*=hitDecay;
+ // Extra drag-only steering: do not store it in steerVX/driftVX, so lifting
+ // the finger cannot increase the residual inertia or auto-aim speed.
+ const dragBoost=pointer!==null&&!dashing?0.5:0;
+ // Diagnostics: sample the actual contributors before position integration.
+ const debugMotionSources=[steerVX+steerVX*dragBoost,steerVY+steerVY*dragBoost,driftVX,driftVY,easedAutoVX,easedAutoVY,hitVX,hitVY,hitVZ];
+ const vx=steerVX+driftVX+easedAutoVX+hitVX+steerVX*dragBoost;
+ const vy=steerVY+driftVY+easedAutoVY+hitVY+steerVY*dragBoost;
+ const roomX=vx>=0?70-pos[0]:pos[0]+70;
+ const roomY=vy>=0?520-pos[1]:pos[1]-250;
+ const easeX=edgeEase(roomX,24),easeY=edgeEase(roomY,24);
+ pos[0]=Math.max(-70,Math.min(70,pos[0]+vx*easeX*dt));
+ pos[1]=Math.max(250,Math.min(520,pos[1]+vy*easeY*dt));
+ pos[2]+=(-speed+hitVZ)*dt;
+ playerVelocity=[vx*easeX,vy*easeY,-speed+hitVZ];
+ // During an active swipe roll, exclude only its transient drift from Gatling lead prediction.
+ // Keep steering, auto movement, knockback, and forward speed unchanged.
+ gatlingPredictVelocity=dashing?[(vx-driftVX)*easeX,(vy-driftVY)*easeY,-speed+hitVZ]:playerVelocity;
+ gatlingAimTime+=dt;
+ const wantedRoll=dashing?0:-smoothJoy[0]*.52*easeX,wantedPitch=dashing?0:-smoothJoy[1]*.22*easeY;
+ if(dashing){
+  dashTime=Math.max(0,dashTime-dt);
+  const completed=1-dashTime/dashDuration;
+  // The last angular velocity exactly matches the beginning of the tail.
+  // A quadratic ease blended with linear motion avoids the zero-velocity seam.
+  const tailOmega=.48*Math.E/.60;
+  const endSlope=tailOmega*dashDuration/(Math.PI*2);
+  const remaining=1-completed;
+  const eased=1-endSlope*remaining-(1-endSlope)*remaining*remaining;
+  roll=dashRoll*eased;
+  if(dashTime===0){
+   // Increase only the residual translation by 1.25x after the swipe roll ends.
+   // The roll impulse, duration and decay time constant remain unchanged.
+   driftVX*=1.25;driftVY*=1.25;
+   rollTailElapsed=0;
+   rollTail=0;
+   bankRoll=0;
+   // A full turn and zero are visually identical; no angle snap occurs.
+   roll=0;
+   // Start the 0.2-second gap AFTER the completed 0.51-second roll.
+   // Buffered swipes are started separately once that gap has elapsed.
+   nextRollAllowedAt=performance.now()+200;
+  }
+ }else{
+  if(queuedRolls.length&&performance.now()>=nextRollAllowedAt){
+   const [nx,ny]=queuedRolls.shift();startRoll(nx,ny);
+  }
+  // Continue rotating in the SAME direction, then smoothly return to level.
+  // Tail starts at zero angle with the exact angular velocity of the roll.
+  rollTailElapsed+=dt;
+  const t=rollTailElapsed;
+  rollTail=Math.sign(dashRoll)*.48*(t/.60)*Math.exp(1-t/.60);
+  if(t>5)rollTail=0;
+  bankRoll+=(wantedRoll-bankRoll)*(1-Math.exp(-dt/.22));
+  roll=bankRoll+rollTail;
+ }
+ pitch+=(wantedPitch-pitch)*(1-Math.exp(-dt/.22));
+ const fwd=[0,0,-1];
+ // Check for an additional aircraft every 4–8 seconds, never exceeding three active enemies.
+ fortressSpawnClock+=dt;
+ if(!fortressHasSpawned&&fortressSpawnClock>=1){fortressHasSpawned=true;spawnFortress();}
+ enemySpawnTimer=Math.min(enemySpawnTimer+dt,nextEnemySpawnInterval);
+ // While any cannon fighter is alive, suspend ALL new enemy spawns.
+ // Preserve the timer at its threshold so spawning resumes after the cannon is defeated.
+ const activeCannon=wingmen.some(a=>!a.destroyed&&a.cannon);
+ if(false&&!activeCannon&&enemySpawnTimer>=nextEnemySpawnInterval){ // Resume standard enemy spawning (ordinary, cannon, formation)
+  enemySpawnTimer-=nextEnemySpawnInterval;
+  nextEnemySpawnInterval=ENEMY_SPAWN_INTERVAL_MIN+Math.random()*(ENEMY_SPAWN_INTERVAL_MAX-ENEMY_SPAWN_INTERVAL_MIN);
+  const ordinary=wingmen.filter(a=>!a.destroyed&&!a.fortress&&!a.formation).length;
+  const hasFormation=wingmen.some(a=>!a.destroyed&&a.formation);
+  if(!hasFormation&&Math.random()<.20){
+   // Formations can arrive while ordinary enemies are present; each uses its own slots.
+   const formation={lane:(Math.random()-.5)*110,altitude:(Math.random()-.5)*45,distance:1048+Math.random()*352,start:now*.001};
+   for(let slot=0;slot<3;slot++){
+    const offset=[0,-65,65][slot],depth=slot?48:0;
+    let a=wingmen.find(a=>a.destroyed&&!a.fortress);
+    if(!a){a={};wingmen.push(a);const marker=document.createElement('div');marker.className='enemyMarker';document.getElementById('enemyMarkers').appendChild(marker);enemyMarkers.push(marker);}
+    Object.assign(a,{kamikaze:false,gatling:false,cannon:false,cannonWarningActive:false,dodge:null,pos:[formation.lane+offset,313.54+formation.altitude-(slot?12:0),pos[2]-formation.distance+depth],yaw:0,roll:0,turn:0,phase:0,lane:formation.lane+offset,altitude:formation.altitude,speed:405,skill:1,velocity:[0,0,-405],hp:Math.ceil(ENEMY_HITS_TO_DESTROY/2),formation,formationSlot:slot,formationLag:slot===0?0:.28+Math.random()*.45,formationPhase:Math.random()*Math.PI*2,formationPlayerZ:pos[2],destroyed:false,smokeClock:0,missileClock:MISSILE_INTERVAL-(1+Math.random()*.5),burstRemaining:0,burstClock:0,burstGap:MISSILE_BURST_GAP});
+   }
+  }else if(ordinary<MAX_ACTIVE_ENEMIES){
+   let a=wingmen.find(a=>a.destroyed&&!a.fortress);
+   if(a){delete a.formation;delete a.formationSlot;a.kamikaze=true;a.cannon=false;a.gatling=false;a.kamikazePhase='evade';a.kamikazeClock=0;a.kamikazeSpinAngle=0;a.kamikazeSpinSpeed=0;a.kamikazeFlightVelocity=null;a.kamikazeMountainClimb=null;a.kamikazeScreenTurn=null;a.kamikazeGroundTurn=false;a.kamikazeAlignVelocity=null;a.kamikazeChargeVelocity=null;a.kamikazeEscapeDirection=null;a.kamikazeEscapeHold=0;a.kamikazeEdgeReverse=null;a.kamikazeSide=Math.random()<.5?-1:1;a.kamikazeDirection=norm([a.kamikazeSide*.85,.2,-.3]);a.kamikazeWanderPhase=Math.random()*Math.PI*2;a.kamikazePlayerZ=pos[2];a.dodge=null;a.cannonWarningActive=false;a.dodgeWait=1+Math.random();a.destroyed=false;a.hp=KAMIKAZE_HITS_TO_DESTROY;a.smokeClock=0;a.missileClock=0;a.burstRemaining=0;a.burstClock=0;a.burstGap=MISSILE_BURST_GAP;a.phase=Math.random()*Math.PI*2;a.skill=.65+Math.random()*.7;a.lane=(Math.random()-.5)*380;a.altitude=(Math.random()-.5)*110;a.pos=[a.lane,313.54+a.altitude,pos[2]-(1000+Math.random()*400)];a.stationPlayerZ=pos[2];a.velocity=[0,0,-405];a.yaw=0;a.roll=0;delete a.gatlingAim;a.gatlingAimHistory=[];a.gatlingElapsed=0;}
+   else{
+    const lane=(Math.random()-.5)*380,altitude=(Math.random()-.5)*110;
+    a={stationPlayerZ:pos[2],pos:[lane,313.54+altitude,pos[2]-(1000+Math.random()*400)],yaw:0,roll:0,turn:0,phase:Math.random()*Math.PI*2,lane,altitude,speed:405,skill:.65+Math.random()*.7,velocity:[0,0,-405],hp:ENEMY_HITS_TO_DESTROY,cannon:false,gatling:false,dodgeWait:1+Math.random(),dodge:null,cannonWarningActive:false};
+    a.kamikaze=true;a.cannon=false;a.gatling=false;a.hp=KAMIKAZE_HITS_TO_DESTROY;a.gatlingAimHistory=[];a.gatlingElapsed=0;a.kamikazePhase='evade';a.kamikazeClock=0;a.kamikazeSpinAngle=0;a.kamikazeSpinSpeed=0;a.kamikazeFlightVelocity=null;a.kamikazeMountainClimb=null;a.kamikazeScreenTurn=null;a.kamikazeGroundTurn=false;a.kamikazeAlignVelocity=null;a.kamikazeChargeVelocity=null;a.kamikazeEscapeDirection=null;a.kamikazeEscapeHold=0;a.kamikazeSide=Math.random()<.5?-1:1;a.kamikazeDirection=norm([a.kamikazeSide*.85,.2,-.3]);a.kamikazeWanderPhase=Math.random()*Math.PI*2;a.kamikazePlayerZ=pos[2];
+    wingmen.push(a);
+    const marker=document.createElement('div');marker.className='enemyMarker';document.getElementById('enemyMarkers').appendChild(marker);enemyMarkers.push(marker);
+   }
+   // All ordinary types share the existing spawn lifecycle; the kamikaze
+   // initialization above remains intact, but is enabled only for its roll.
+   const roll=Math.random();
+   const kind=roll<.30?'standard':roll<.52?'gatling':roll<.68?'cannon':'kamikaze';
+   a.kamikaze=kind==='kamikaze';
+   a.gatling=kind==='gatling';
+   a.cannon=kind==='cannon';
+   a.hp=a.kamikaze?KAMIKAZE_HITS_TO_DESTROY:a.gatling?GATLING_HITS_TO_DESTROY:ENEMY_HITS_TO_DESTROY;
+   a.dodgeRemaining=a.cannon?3:0;
+   a.dodgeWait=a.cannon?1.5:1+Math.random();
+   a.cannonWarningActive=false;
+   a.gatlingAimHistory=[];
+   a.gatlingElapsed=0;
+   delete a.gatlingAim;
+  }
+ }
+ for(let i=0;i<wingmen.length;i++){updateWingman(wingmen[i],dt,now*.001);}
+ refreshFortressTargets();
+ // Update the turret before firing so visible barrel direction matches projectile direction.
+ for(const a of wingmen)updateGatlingAim(a);
+ // Each enemy normally fires 1–3 missiles at .3s gaps; rarely fires 8 at .2s gaps.
+ for(const a of wingmen){
+  if(a.destroyed||a.cannon||a.kamikaze)continue;
+  if(a.gatling){
+   // 2 seconds of cannon-shell fire at 0.1s spacing, then a 1s reload.
+   // Independent of the normal enemy missile burst scheduler.
+   // Count crossed firing slots, including a wrap at the end of reload.
+   const prevAbsolute=a.gatlingElapsed??-0.000001;
+   const nextAbsolute=prevAbsolute+dt;
+   const first=Math.floor(prevAbsolute/.1)+1,last=Math.floor(nextAbsolute/.1);
+   for(let slot=first;slot<=last;slot++){
+    const phase=(slot*.1)%3;
+    if(phase>=2-1e-6)continue;
+    const shellSpeed=610;
+    // Use the same transform that renders the Gatling gun.
+    // The local barrel points along -Z; no new targeting calculation here.
+    const turret=gatlingTurretModel(a);
+    const direction=norm([-turret[8],-turret[9],-turret[10]]);
+    // Gun-only mesh has its barrel centers at local Y=-3, muzzle Z=-36.5.
+    const origin=[0,1,2].map(k=>turret[12+k]-3*turret[4+k]-36.5*turret[8+k]);
+    cannonShots.push({pos:origin,vel:direction.map(v=>v*shellSpeed),age:0,smokeClock:0,noTrail:true,gatlingShot:true});
+   }
+   a.gatlingElapsed=nextAbsolute;
+   continue;
+  }
+  // Match the fortress attack unlock to the exact stance condition used by its lock markers.
+  if(a.fortress){
+   const combatReady=a.fortressIntroTurn>=1&&Math.abs(a.fortressIntroPitch)<=.025&&Math.abs(a.yaw)<=.025;
+   if(!combatReady){a.missileClock=0;a.burstRemaining=0;continue;}
+   if(!a.fortressAttackUnlocked){
+    a.fortressAttackUnlocked=true;
+    a.missileClock=MISSILE_INTERVAL-dt; // First randomized salvo starts as the markers appear.
+   }
+  }
+  if(a.fortress){
+   // Each of the four model-aligned launchers has its own burst timer and ammo count.
+   // Stagger the initial salvoes; thereafter each port runs its own randomized cycle.
+   if(!a.fortressLaunchers)a.fortressLaunchers=[0,1,2,3].map(i=>({
+    clock:MISSILE_INTERVAL-i*.7,remaining:0,burstClock:0,gap:MISSILE_BURST_GAP
+   }));
+   for(let port=0;port<4;port++){
+    const launcher=a.fortressLaunchers[port];
+    launcher.clock+=dt;
+    if(launcher.clock>=MISSILE_INTERVAL){
+     launcher.clock-=MISSILE_INTERVAL;
+     const rapidBurst=Math.random()<.05;
+     launcher.remaining=rapidBurst?8:1+Math.floor(Math.random()*3);
+     launcher.gap=rapidBurst?.2:MISSILE_BURST_GAP;
+     launcher.burstClock=launcher.gap;
+    }
+    if(launcher.remaining<=0)continue;
+    launcher.burstClock+=dt;
+    if(launcher.burstClock<launcher.gap)continue;
+    launcher.burstClock-=launcher.gap;
+    launcher.remaining--;
+    if(missiles.length>=MAX_MISSILES)continue;
+    const ring=document.createElement('div');ring.className='missileRing';shotLayer.appendChild(ring);
+    const launchPos=fortressMissileLaunchPosition(a,port);
+    const aim=pos.map((v,k)=>v-launchPos[k]);
+    const aimLength=Math.max(.001,Math.hypot(...aim));
+    const launchDirection=coneLimitedMissileVelocity(aim.map(v=>v/aimLength*MISSILE_SPEED));
+    const launchVelocity=launchDirection.map((v,k)=>v+(k===2?-speed:0));
+    missiles.push({ring,pos:launchPos,vel:launchVelocity,age:0,smokeClock:0,homingOff:false,hasClosed:false,lastDistance:aimLength});
+   }
+   continue;
+  }
+  a.missileClock=(a.missileClock??0)+dt;
+  if(a.missileClock>=MISSILE_INTERVAL){
+   a.missileClock-=MISSILE_INTERVAL;
+   const rapidBurst=Math.random()<.05;
+   a.burstRemaining=rapidBurst?8:1+Math.floor(Math.random()*3);
+   a.burstGap=rapidBurst?.2:MISSILE_BURST_GAP;
+   a.burstClock=a.burstGap;
+  }
+  if(a.burstRemaining>0){
+   a.burstClock+=dt;
+   // No off-screen attacks from formation members; retain their burst until visible.
+   if(a.formation&&!formationFullyVisible(a))continue;
+   if(a.burstClock>=a.burstGap){
+    a.burstClock-=a.burstGap;
+    a.burstRemaining--;
+    if(missiles.length<MAX_MISSILES){
+    const ring=document.createElement('div');ring.className='missileRing';shotLayer.appendChild(ring);
+    const launchPos=a.fortress?
+     fortressMissileLaunchPosition(a,a.burstRemaining):a.gatling?
+     gatlingMount(a).map((v,k)=>v+(a.gatlingAim||[0,0,-1])[k]*36):
+     [a.pos[0],a.pos[1]-2,a.pos[2]+12];
+    const aim=pos.map((v,k)=>v-launchPos[k]);
+    const aimLength=Math.max(.001,Math.hypot(...aim));
+    // Launch toward the player; steering is limited by MISSILE_TURN_RATE.
+    const launchDirection=a.gatling?
+     (a.gatlingAim||[0,0,-1]).map(v=>v*MISSILE_SPEED):
+     coneLimitedMissileVelocity(aim.map(v=>v/aimLength*MISSILE_SPEED));
+    const launchVelocity=launchDirection.map((v,k)=>v+(k===2?-speed:0));
+    missiles.push({ring,pos:launchPos,vel:launchVelocity,age:0,smokeClock:0,homingOff:false,hasClosed:false,lastDistance:aimLength});
+    }
+   }
+  }
+ }
+ const behind=[pos[0]*.85,pos[1]+15,pos[2]+75];
+ // Keep the delayed follow, but do not vary camera response by position.
+ // Follow while the aircraft is actually moving, and smoothly freeze the
+ // lateral/vertical camera when the aircraft slows or the stick is released.
+ // This avoids the middle-of-screen speed change and end-of-travel rebound.
+ // Move the camera by a fixed fraction of the aircraft's displacement.
+ // Unlike chasing an absolute target, this never speeds up or slows down
+ // merely because the camera has caught up; release also leaves no rebound.
+ const moveX=pos[0]-previousCameraPlaneX;
+ const moveY=pos[1]-previousCameraPlaneY;
+ cam[0]+=moveX*.72;
+ cam[1]+=moveY*.72;
+ previousCameraPlaneX=pos[0];
+ previousCameraPlaneY=pos[1];
+ cam[2]-=speed*dt;
+ cam[2]+=(behind[2]-cam[2])*Math.min(1,dt*5);
+ let warn='';
+let w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,1.7);if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){canvas.width=Math.floor(w*dpr);canvas.height=Math.floor(h*dpr)}gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(.67,.79,.85,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);let view=look(cam,[cam[0],cam[1]-6,pos[2]-95],[0,1,0]);let proj=perspective(67*Math.PI/180,w/h,.5,4400);proj[9]=-(1/3);let pv=mul(proj,view);autoProjection=pv;
+const terrainBase=Math.floor(pos[2]/4200)*4200;
+for(let tile=-1;tile<=1;tile++){
+ const tz=terrainBase+tile*4200;
+ const shift=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,tz,1];
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,shift)));
+ draw(terrain);
+}let right=[Math.cos(yaw),0,Math.sin(yaw)],up=[-Math.sin(yaw)*Math.sin(pitch),Math.cos(pitch),Math.cos(yaw)*Math.sin(pitch)];let cr=Math.cos(roll),sr=Math.sin(roll),rr=right.map((v,i)=>v*cr+up[i]*sr),uu=up.map((v,i)=>up[i]*cr-right[i]*sr); // Preserve the original gun-port orientation vectors.
+// Player model is drawn after target acquisition so only its visual nose can track the lock.
+for(const a of wingmen){
+ if(a.destroyed)continue;
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,aircraftModel(a))));
+ if(a.gatling){
+  draw(gatlingHull);
+  gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,gatlingTurretModel(a))));
+  draw(gatlingTurret);
+ }else if(a.kamikaze){
+  // Glow begins with the first alignment roll, reaches full pink-white at charge.
+  const glow=a.kamikazePhase==='flash'?1:a.kamikazePhase==='charge'?1:a.kamikazePhase==='align'?Math.min(1,Math.max(0,(a.kamikazeClock||0)/3)):0;
+  const flash=a.kamikazePhase==='flash'?Math.sin(Math.PI*Math.min(1,(a.kamikazeClock||0)/.30)):0;
+  gl.uniform1f(kamikazeGlow,glow);
+  gl.uniform1f(kamikazeFlash,flash);
+  draw(kamikazePlane);
+  // v520: visible, expanding white energy sphere with a feathered transparent rim.
+  // Screen size is perspective-scaled from the aircraft's actual world position.
+  // Restore the expanding orb to the 0.30-second pre-charge flash phase.
+  if(a.kamikazePhase==='flash'){
+   if(!a.kamikazeFlashOrb){
+    const orb=document.createElement('div');orb.className='kamikazeFlashOrb';
+    shotLayer.appendChild(orb);a.kamikazeFlashOrb=orb;
+   }
+   const point=projectWorld(a.pos,pv),orb=a.kamikazeFlashOrb;
+   if(point){
+    const t=Math.min(1,(a.kamikazeClock||0)/.30);
+    const diameter=Math.min(390,Math.max(52,innerHeight*115/point.depth))*(.55+1.55*t);
+    orb.style.display='block';orb.style.left=point.x+'px';orb.style.top=point.y+'px';
+    orb.style.width=diameter+'px';orb.style.height=diameter+'px';
+    orb.style.opacity=String(Math.min(1,t*12)*Math.pow(1-t,.65));
+   }else orb.style.display='none';
+  }else if(a.kamikazeFlashOrb){a.kamikazeFlashOrb.remove();a.kamikazeFlashOrb=null;}
+  gl.uniform1f(kamikazeFlash,0);
+  gl.uniform1f(kamikazeGlow,0);
+ }else draw(a.fortress?fortressPlane:a.formation?formationPlane:a.cannon?cannonPlane:enemyPlane);
+}
+// Clean up any flash orb whose aircraft was destroyed or despawned this frame.
+for(const orb of shotLayer.querySelectorAll('.kamikazeFlashOrb')){
+ if(!wingmen.some(a=>!a.destroyed&&a.kamikazeFlashOrb===orb))orb.remove();
+}
+// Render falling aircraft using their original enemy mesh, with no active hitbox.
+for(const wreck of fallingWrecks){
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,aircraftModel(wreck))));
+ draw(wreck.mesh);
+}
+// Each separated fragment is a real section of the aircraft's original geometry.
+for(const fragment of burstFragments){
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,aircraftModel(fragment))));
+ draw(fragment.mesh);
+}
+// Project a point on the aircraft's actual forward axis into the camera.
+// This stays true to the nose direction, even as the camera follows laterally.
+const forwardPoint=[pos[0]+fwd[0]*400,pos[1]+fwd[1]*400,pos[2]+fwd[2]*400,1];
+const forwardClip=[0,0,0,0];
+for(let i=0;i<4;i++)forwardClip[i]=pv[i]*forwardPoint[0]+pv[4+i]*forwardPoint[1]+pv[8+i]*forwardPoint[2]+pv[12+i]*forwardPoint[3];
+const sightX=.5+.5*forwardClip[0]/Math.max(.001,forwardClip[3]);
+const sightY=.5-.5*forwardClip[1]/Math.max(.001,forwardClip[3]);
+// Acquire targets by proximity to the aircraft's on-screen position, NOT the crosshair.
+// The forward crosshair remains a visual reference; aircraft movement is untouched.
+const planeClip=[0,0,0,0];
+for(let i=0;i<4;i++)planeClip[i]=pv[i]*pos[0]+pv[4+i]*pos[1]+pv[8+i]*pos[2]+pv[12+i];
+const planeScreenX=.5+.5*planeClip[0]/Math.max(.001,planeClip[3]);
+const planeScreenY=.5-.5*planeClip[1]/Math.max(.001,planeClip[3]);
+// One shared target for aim, automatic movement, nose tracking and firing.
+// Priority: in-range first; within range use screen distance; outside range use proximity to the 750-unit boundary, then screen distance.
+// The blue target square shows readiness or the 1-second cooldown.
+let selectedEnemy=null,selectedScreenDistance=Infinity,selectedRangeGap=Infinity,selectedInRange=false;
+missileLockTarget=null;
+// Hide stale warnings immediately if the cannon is destroyed or outside the screen.
+cannonWarningRing.style.display='none';
+// Fortress is only targetable through its six individual engines, then its exposed core.
+const targetCandidates=[...wingmen.filter(a=>!a.fortress),...fortressTargets];
+for(const [enemyIndex,a] of targetCandidates.entries()){
+ const marker=a.fortressPart?a.marker:enemyMarkers[wingmen.indexOf(a)];
+ if(a.destroyed){marker.style.display='none';marker.classList.remove('missileLocked');continue;}
+ // Do not show or acquire fortress lock markers until the entrance turn and leveling finish.
+ if(a.fortressPart&&(a.parent.fortressIntroTurn<1||Math.abs(a.parent.fortressIntroPitch)>.025||Math.abs(a.parent.yaw)>.025)){
+  marker.style.display='none';marker.classList.remove('missileLocked');continue;
+ }
+ const p=[...a.pos,1],q=[0,0,0,0];
+ for(let i=0;i<4;i++)q[i]=pv[i]*p[0]+pv[4+i]*p[1]+pv[8+i]*p[2]+pv[12+i]*p[3];
+ if(q[3]<=0){marker.style.display='none';continue;}
+ const x=.5+.5*q[0]/q[3],y=.5-.5*q[1]/q[3];
+ if(x<0||x>1||y<0||y>1){marker.style.display='none';continue;}
+ const enemyDistance=Math.hypot(...a.pos.map((v,i)=>v-pos[i]));
+ const inRange=enemyDistance<=WEAPON_RANGE;
+ const rangeGap=Math.abs(enemyDistance-WEAPON_RANGE);
+ marker.style.display='block';marker.style.left=x*w+'px';marker.style.top=y*h+'px';
+ if(a.cannon&&a.cannonWarningActive){
+  cannonWarningRing.style.display='block';
+  cannonWarningRing.style.left=x*w+'px';
+  cannonWarningRing.style.top=y*h+'px';
+ }
+ marker.classList.toggle('inRange',inRange);
+ const squareSize=inRange?60:60+120*Math.min(1,(enemyDistance-WEAPON_RANGE)/WEAPON_RANGE);
+ marker.style.width=squareSize+'px';marker.style.height=squareSize+'px';
+ // Rotate clockwise from 0 to 90 degrees while shrinking from 180px to 60px.
+ const squareRotation=inRange?0:90*(1-Math.min(1,(enemyDistance-WEAPON_RANGE)/WEAPON_RANGE));
+ marker.style.transform='translate(-50%,-50%) rotate('+squareRotation+'deg)';
+ // Keep the blue lock square independent of the yellow square's tilt.
+ marker.style.setProperty('--rocket-lock-counter-angle',(-squareRotation).toFixed(2)+'deg');
+ const screenDistance=Math.hypot((x-planeScreenX)*w,(y-planeScreenY)*h);
+ if(!selectedEnemy||(inRange&&!selectedInRange)||(inRange===selectedInRange&&(inRange?screenDistance<selectedScreenDistance:(rangeGap<selectedRangeGap||(rangeGap===selectedRangeGap&&screenDistance<selectedScreenDistance))))){
+  selectedEnemy=a;selectedInRange=inRange;selectedRangeGap=rangeGap;selectedScreenDistance=screenDistance;
+ }
+}
+// Rockets use exactly the same selected enemy as the machine gun; only their firing range differs.
+missileLockTarget=selectedEnemy;
+
+// Only a stationary tap requests one salvo; rolls never fire.
+if(tapFirePending&&missileLockTarget&&!missileLockTarget.destroyed&&
+ Math.hypot(...missileLockTarget.pos.map((v,k)=>v-pos[k]))<=ROCKET_RANGE&&
+ playerRocketReady(now)&&
+ playerMissiles.length<=MAX_PLAYER_MISSILES-2){
+ queuedMissileTarget=missileLockTarget;
+}
+// Each tap is a single attempt; never defer until reload or range changes.
+tapFirePending=false;
+// A rocket is ready only when the shared gun target is within 800 units,
+// the 1-second cooldown has ended, and a full two-rocket salvo can launch.
+const rocketReady=!!missileLockTarget&&!missileLockTarget.destroyed&&
+ Math.hypot(...missileLockTarget.pos.map((v,k)=>v-pos[k]))<=ROCKET_RANGE&&
+ playerRocketReady(now)&&
+ playerMissiles.length<=MAX_PLAYER_MISSILES-2;
+// After firing, expand the same blue square smoothly from 34px to its outer
+// size over 0.2s; then shrink during the 1s cooldown.
+// Outside rocket range, retain the outer square as before.
+const ROCKET_LOCK_EXPAND_MS=200;
+const reloadElapsed=Math.max(0,now-lastPlayerRocketLaunch);
+const reloadProgress=Math.max(0,Math.min(1,
+ (reloadElapsed-ROCKET_LOCK_EXPAND_MS)/(PLAYER_ROCKET_COOLDOWN_MS-ROCKET_LOCK_EXPAND_MS)));
+for(const a of targetCandidates){
+ const marker=a.fortressPart?a.marker:enemyMarkers[wingmen.indexOf(a)];
+ const isTarget=a===missileLockTarget&&!a.destroyed;
+ marker.classList.toggle('missileLocked',isTarget);
+ marker.classList.toggle('rocketReady',isTarget&&rocketReady);
+ if(!isTarget)continue;
+ const targetDistance=Math.hypot(...a.pos.map((v,k)=>v-pos[k]));
+ const inRocketRange=targetDistance<=ROCKET_RANGE;
+ const outerSize=((parseFloat(marker.style.width)||60)+24)*1.3;
+ const progress=inRocketRange?(playerRocketReady(now)?1:reloadProgress):0;
+ const expanding=inRocketRange&&!playerRocketReady(now)&&reloadElapsed<ROCKET_LOCK_EXPAND_MS;
+ const expansion=expanding?1-Math.pow(1-reloadElapsed/ROCKET_LOCK_EXPAND_MS,3):1;
+ // Outside 800 units, approach the 34px lock square from the large outer square.
+ // Rotate counterclockwise by 90 degrees as distance closes from 1400 to 800.
+ // This is visual only; firing range and cooldown behavior remain unchanged.
+ const approach=Math.max(0,Math.min(1,(targetDistance-ROCKET_RANGE)/600));
+ const lockSize=inRocketRange
+  ?(expanding?34+(outerSize-34)*expansion:outerSize+(34-outerSize)*progress)
+  :34+(outerSize-34)*approach;
+ const lockAngle=inRocketRange?-90*progress:-90*(1-approach);
+ marker.style.setProperty('--rocket-lock-size',lockSize.toFixed(2)+'px');
+ marker.style.setProperty('--rocket-lock-angle',lockAngle.toFixed(2)+'deg');
+}
+const trackedEnemy=selectedInRange?selectedEnemy:null;
+const closest=selectedInRange?selectedScreenDistance:Infinity;
+// No lead prediction: aim at the enemy's current world-space position.
+const t=Math.max(0,Math.min(1,(230-closest)/160));
+const attraction=t*t*(3-2*t)*.82;
+const crosshairEl=document.getElementById('cross');
+const ghostEl=document.getElementById('crossGhost');
+ghostEl.style.display='none';
+// Outside acquisition, the crosshair approaches the nearest visible enemy
+// but stays offset by exactly the distance beyond the acquisition radius.
+// Within the existing firing threshold it sits directly on the enemy.
+const acquisitionRadius=70+160*(1-((()=>{let lo=0,hi=1;for(let i=0;i<24;i++){const m=(lo+hi)/2;if(m*m*(3-2*m)*.82>.08)hi=m;else lo=m;}return (lo+hi)/2;})()));
+autoApproachTarget=selectedEnemy;
+const aimEnemy=selectedEnemy;
+// Compute the existing target/no-target positions first. Only the displayed
+// crosshair is eased during transitions; targeting and firing stay untouched.
+const noseDx=(sightX-planeScreenX)*w,noseDy=(sightY-planeScreenY)*h;
+const noseGap=Math.hypot(noseDx,noseDy);
+const nearGap=Math.min(noseGap,Math.max(38,noseGap*.35));
+const nearScale=noseGap>0.001?nearGap/noseGap:0;
+let desiredCrossX=planeScreenX*w+noseDx*nearScale;
+let desiredCrossY=planeScreenY*h+noseDy*nearScale;
+let crossTargetVisible=false;
+if(aimEnemy){
+ const q=[0,0,0,0],p=[...aimEnemy.pos,1];
+ for(let i=0;i<4;i++)q[i]=pv[i]*p[0]+pv[4+i]*p[1]+pv[8+i]*p[2]+pv[12+i]*p[3];
+ if(q[3]>.001){
+  const ex=w*(.5+.5*q[0]/q[3]),ey=h*(.5-.5*q[1]/q[3]);
+  const px=planeScreenX*w,py=planeScreenY*h;
+  const dx=ex-px,dy=ey-py,d=Math.hypot(dx,dy);
+  const offset=Math.max(0,d-acquisitionRadius);
+  desiredCrossX=ex-(d>0?dx/d*offset:0);
+  desiredCrossY=ey-(d>0?dy/d*offset:0);
+  crossTargetVisible=true;
+ }
+}
+if(crossTargetVisible!==crossWasTargeted){
+ crossTransitionStartX=Number.isFinite(crossDisplayX)?crossDisplayX:desiredCrossX;
+ crossTransitionStartY=Number.isFinite(crossDisplayY)?crossDisplayY:desiredCrossY;
+ crossTransitionAt=now;
+ crossWasTargeted=crossTargetVisible;
+}
+if(!Number.isFinite(crossDisplayX)){
+ crossTransitionStartX=desiredCrossX;crossTransitionStartY=desiredCrossY;
+ crossTransitionAt=now;
+}
+const crossInitialT=Math.max(0,Math.min(1,(now-crossTransitionAt)/280));
+const crossInitialEase=crossInitialT*crossInitialT*(3-2*crossInitialT);
+crossDisplayX=crossTransitionStartX+(desiredCrossX-crossTransitionStartX)*crossInitialEase;
+crossDisplayY=crossTransitionStartY+(desiredCrossY-crossTransitionStartY)*crossInitialEase;
+crosshairEl.style.display='block';
+crosshairEl.style.left=crossDisplayX+'px';
+crosshairEl.style.top=crossDisplayY+'px';
+// Visual nose tracking also supplies the optional gentle approach target.
+// Ease into/out of the lock so acquisition does not jerk the aircraft model.
+let desiredVisual=[0,0,-1];
+if(selectedEnemy){
+ const toEnemy=selectedEnemy.pos.map((v,i)=>v-pos[i]);
+ const length=Math.hypot(...toEnemy);
+ if(length>.001){
+  desiredVisual=toEnemy.map(v=>v/length);
+ }
+}
+// Ease the visual nose toward its target over roughly two seconds (about 97% settled).
+const visualResponse=1-Math.exp(-dt/.55);
+visualAim=norm(visualAim.map((v,i)=>v+(desiredVisual[i]-v)*visualResponse));
+// Aircraft local nose is -Z; keep its existing bank while orienting the model.
+const visualRight=norm([-visualAim[2],0,visualAim[0]]);
+const visualUp=norm(cross(visualRight,visualAim));
+const visualCr=Math.cos(roll),visualSr=Math.sin(roll);
+const visualRR=visualRight.map((v,i)=>v*visualCr+visualUp[i]*visualSr);
+const visualUU=visualUp.map((v,i)=>visualUp[i]*visualCr-visualRight[i]*visualSr);
+const visualBack=visualAim.map(v=>-v);
+const visualModel=[visualRR[0],visualRR[1],visualRR[2],0,visualUU[0],visualUU[1],visualUU[2],0,visualBack[0],visualBack[1],visualBack[2],0,pos[0],pos[1],pos[2],1];
+// Resolve pending ram impacts only after the current player model exists.
+for(const ram of pendingKamikazeImpacts){
+ // A ram is a close-range collision. Never feed an unbounded world-space
+ // sweep to the projectile collision sampler (which subdivides every 2 units).
+ const center=pos.slice();
+ const near=(p)=>p.map((v,i)=>center[i]+Math.max(-65,Math.min(65,v-center[i])));
+ handleEnemyProjectileContact(near(ram.from),near(ram.to),ram.velocity,visualModel,9,14,14,ram.heading,3,Math.min(ram.dt,.05),near(ram.to));
+}
+pendingKamikazeImpacts.length=0;
+// After an accepted hit, blink only the player aircraft at 0.05-second intervals.
+// Visual-only: collision, movement, wingtip trails and all other effects continue.
+const hitGraceRemaining=playerInvulnerableUntil-performance.now();
+const playerVisible=hitGraceRemaining<=0||Math.floor((1000-hitGraceRemaining)/50)%2===1;
+if(playerVisible){gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,visualModel)));draw(plane);}
+// Jet-powered aircraft: no propeller or propeller disc.
+// Current wingtip positions are used only for the live first ribbon segment.
+for(let side=0;side<2;side++){
+ const local=[(side===0?-1:1)*11.8,-.6,7.5];
+ liveWingtipPositions[side]=[0,1,2].map(k=>pos[k]+visualModel[k]*local[0]+visualModel[4+k]*local[1]+visualModel[8+k]*local[2]);
+}
+// Continuous razor-thin white 2D wingtip ribbons, anchored in world space.
+// Each emitted point remains in world space, preserving turns and barrel rolls.
+wingtipClock+=dt;
+const cloudStep=.035;
+const emitCount=Math.min(5,Math.floor(wingtipClock/cloudStep));
+wingtipClock-=emitCount*cloudStep;
+for(let j=0;j<emitCount;j++){
+ const lag=(emitCount-1-j)*cloudStep;
+ for(const side of [-1,1]){
+  const local=[side*11.8,-.6,7.5];
+  const cloudPos=[pos[0],pos[1],pos[2]];
+  for(let k=0;k<3;k++)cloudPos[k]+=visualModel[k]*local[0]+visualModel[4+k]*local[1]+visualModel[8+k]*local[2];
+  // The game scrolls the world toward the camera; compensate for subframe emission.
+  cloudPos[2]+=speed*lag;
+  wingtipClouds.push({pos:cloudPos,age:lag,life:2.8});
+ }
+}
+for(let i=wingtipClouds.length-1;i>=0;i--){
+ const d=wingtipClouds[i];d.age+=dt;
+ // The cloud remains at its emission position in world space.
+ if(d.age>=d.life)wingtipClouds.splice(i,1);
+}
+
+// Solve |target + velocity*t - muzzle| = projectileSpeed*t.
+// Aim is fixed at firing time: bullets do not home in flight.
+function leadTarget(muzzle,target,velocity,projectileSpeed){
+ const r=target.map((v,i)=>v-muzzle[i]);
+ const v=velocity||[0,0,0];
+ const A=dot(v,v)-projectileSpeed*projectileSpeed;
+ const B=2*dot(r,v),C=dot(r,r);
+ let t=null;
+ if(Math.abs(A)<1e-8){if(Math.abs(B)>1e-8&&-C/B>0)t=-C/B;}
+ else{
+  const D=B*B-4*A*C;
+  if(D>=0){const root=Math.sqrt(D);const t1=(-B-root)/(2*A),t2=(-B+root)/(2*A);
+   t=[t1,t2].filter(x=>x>0).sort((a,b)=>a-b)[0]??null;}
+ }
+ if(t===null)return target.slice();
+ return target.map((p,i)=>p+v[i]*t);
+}
+// Launch actual world-space projectiles from the aircraft's left/right gun ports.
+// Each projectile retains its initial velocity: no screen-space interpolation
+// and no homing after it leaves the aircraft.
+function projectWorld(p,matrix){
+ const m=matrix||pv,q=[0,0,0,0];
+ for(let i=0;i<4;i++)q[i]=m[i]*p[0]+m[4+i]*p[1]+m[8+i]*p[2]+m[12+i];
+ return q[3]>.5?{x:innerWidth*(.5+.5*q[0]/q[3]),y:innerHeight*(.5-.5*q[1]/q[3]),depth:q[3]}:null;
+}
+// Swept collision for the actual enlarged missile mesh (body, nose and four fins).
+// Player hitbox: compact central fuselage only. Exclude both main wings,
+// trim the thin nose tip, and keep the lateral extent inside the gun ports
+// (local X = +/-4.5). The rear extent and vertical coverage stay intact.
+// Capsules remain in aircraft-local coordinates and follow visualModel.
+const PLAYER_HULL_PARTS=[
+ [[0,0,-8.5],[0,0,8],1.7],
+ [[-1.5,0,8],[-2.6,-.2,11],.85],
+ [[1.5,0,8],[2.6,-.2,11],.85],
+ [[-2,1,8],[-3.2,3.4,10],.65],
+ [[2,1,8],[3.2,3.4,10],.65]
+];
+function segmentDistanceSquared(a,b,c,d){
+ const u=b.map((v,i)=>v-a[i]),v=d.map((x,i)=>x-c[i]),w=a.map((x,i)=>x-c[i]);
+ const aa=dot(u,u),bb=dot(u,v),cc=dot(v,v),dd=dot(u,w),ee=dot(v,w),den=aa*cc-bb*bb;
+ let sc=0,tc=0;
+ if(den>1e-8)sc=Math.max(0,Math.min(1,(bb*ee-cc*dd)/den));
+ tc=cc>1e-8?Math.max(0,Math.min(1,(bb*sc+ee)/cc)):0;
+ if(aa>1e-8)sc=Math.max(0,Math.min(1,(bb*tc-dd)/aa));
+ const diff=w.map((x,i)=>x+sc*u[i]-tc*v[i]);
+ return dot(diff,diff);
+}
+function modelPoint(model,p){
+ return [0,1,2].map(i=>model[i]*p[0]+model[4+i]*p[1]+model[8+i]*p[2]+model[12+i]);
+}
+function projectileTouchesAircraft(from,to,playerFrom,model,shellRadius,shellFront,shellRear,heading){
+ // Find the first swept contact, returning its position on the aircraft.
+ // A projectile's mesh uses negative local Z for its nose.
+ const delta=to.map((v,i)=>v-from[i]);
+ const aircraftMove=pos.map((v,i)=>v-playerFrom[i]);
+ const relative=delta.map((v,i)=>v-aircraftMove[i]);
+ const steps=Math.max(1,Math.ceil(Math.hypot(...relative)/2));
+ const hull=PLAYER_HULL_PARTS.map(([a,b,r])=>[modelPoint(model,a),modelPoint(model,b),r]);
+ for(let j=0;j<=steps;j++){
+  const t=j/steps;
+  const center=from.map((v,i)=>v+delta[i]*t);
+  const shift=aircraftMove.map(v=>v*(t-1));
+  const a=center.map((v,i)=>v+heading[i]*shellFront);
+  const b=center.map((v,i)=>v-heading[i]*shellRear);
+  for(const [p,q,r] of hull){
+   const c=p.map((v,i)=>v+shift[i]),d=q.map((v,i)=>v+shift[i]);
+   if(segmentDistanceSquared(a,b,c,d)<=(r+shellRadius)**2){
+    // Find the nearest visible aircraft surface point rather than
+    // exploding at the shell's center (which may be 35 units away).
+    const axis=d.map((v,i)=>v-c[i]),axis2=Math.max(1e-8,dot(axis,axis));
+    const u=b.map((v,i)=>v-a[i]),u2=Math.max(1e-8,dot(u,u));
+    let h=0,k=0;
+    for(let n=0;n<4;n++){
+     const onShell=a.map((v,i)=>v+u[i]*h);
+     k=Math.max(0,Math.min(1,dot(onShell.map((v,i)=>v-c[i]),axis)/axis2));
+     const onHull=c.map((v,i)=>v+axis[i]*k);
+     h=Math.max(0,Math.min(1,dot(onHull.map((v,i)=>v-a[i]),u)/u2));
+    }
+    const onHull=c.map((v,i)=>v+axis[i]*k);
+    const onShell=a.map((v,i)=>v+u[i]*h);
+    const away=onShell.map((v,i)=>v-onHull[i]);
+    const len=Math.hypot(...away);
+    const impact=onHull.map((v,i)=>v+(len>1e-6?away[i]/len*r:0));
+    return impact.map((v,i)=>v+aircraftMove[i]*(1-t));
+   }
+  }
+ }
+ return null;
+}
+function handleEnemyProjectileContact(from,to,velocity,model,radius,front,rear,heading,power,dt,confirmedImpact=null){
+ // One-way contact firewall. Once the first hit has been accepted, the
+ // projectile remains visual-only: no contact resolution may affect the jet.
+ if(performance.now()<playerInvulnerableUntil)return false;
+ // Roll lasts 0.51s, but projectile immunity ends 0.30s after roll start.
+ const rollInvulnerable=dashTime>0&&dashTime>dashDuration-0.30;
+ if(rollInvulnerable)triggerRollSlowMotion(performance.now());
+ if(rollInvulnerable||performance.now()<nearMissSlowUntil)return false;
+ const playerOld=pos.map((v,k)=>v-playerVelocity[k]*dt);
+ // A kamikaze ram was already confirmed by its own 3D distance test.
+ // Do not send that contact through the missile sweep solver a second time.
+ const impact=confirmedImpact??projectileTouchesAircraft(from,to,playerOld,model,radius,front,rear,heading);
+ if(impact===null)return false;
+ // Commit the hit atomically BEFORE triggering any effects.
+ playerInvulnerableUntil=performance.now()+1000;acceptedPlayerHitCount++;auditStore("命中成立");
+ // Re-arm the two-stage blast for each new accepted hit (the 1s immunity prevents overlap).
+ playerHitBlastStage=0;
+ spawnPlayerHitExplosion(pos.slice(),power,1);
+ delayedPlayerExplosions.push({remaining:.1,power});
+ // The first accepted impact alone applies the original 3D knockback.
+ const toCenter=pos.map((v,k)=>v-impact[k]);
+ const centerDistance=Math.hypot(...toCenter);
+ const travelSpeed=Math.hypot(...velocity);
+ const travelDir=centerDistance>1e-6?toCenter.map(v=>v/centerDistance):
+   (travelSpeed>1e-6?velocity.map(v=>v/travelSpeed):[0,0,-1]);
+ const hitImpulse=Math.hypot(190,130);knockbackImpulseCount++;auditStore("衝撃発生");
+ hitVX=Math.max(-300,Math.min(300,hitVX+travelDir[0]*hitImpulse));
+ hitVY=Math.max(-240,Math.min(240,hitVY+travelDir[1]*hitImpulse));
+ hitVZ=Math.max(-300,Math.min(300,hitVZ+travelDir[2]*hitImpulse));
+ return true;
+}
+
+// Player rocket: fixed-heading screen-plane lead. Predict only the enemy's
+// lateral/vertical movement (X/Y); retain its current Z, without depth lead.
+// Flight remains completely unguided after launch.
+if(queuedMissileTarget){
+ const target=queuedMissileTarget;queuedMissileTarget=null;
+ if(!target.destroyed&&Math.hypot(...target.pos.map((v,k)=>v-pos[k]))<=ROCKET_RANGE&&playerMissiles.length<=MAX_PLAYER_MISSILES-2&&playerRocketReady(performance.now())){
+  // Fire a simultaneous left/right pair from the same selected target.
+  const rocketMuzzles=[-4.5,4.5];
+  const pairedBolts=[];
+  for(const muzzleX of rocketMuzzles){
+  const launchPos=[pos[0]+muzzleX,pos[1]-2,pos[2]-0];
+  // Estimate time to the target's current screen plane. Do not extrapolate Z.
+  // Lateral/vertical velocity is measured in world units per second and maps
+  // to screen movement at the target's current depth.
+  const travelTime=Math.hypot(...target.pos.map((v,k)=>v-launchPos[k]))/Math.max(1,PLAYER_MISSILE_SPEED);
+  const leadTime=Math.min(2,Math.max(0,travelTime));
+  const predicted=[target.pos[0]+(target.velocity?.[0]||0)*leadTime,
+                   target.pos[1]+(target.velocity?.[1]||0)*leadTime,
+                   target.pos[2]];
+  const aim=predicted.map((v,k)=>v-launchPos[k]);
+  const direction=norm(aim);
+  const initial=coneLimitedMissileVelocity([-direction[0],-direction[1],-direction[2]]).map(v=>-v);
+  const vel=initial.map((v,k)=>v*(PLAYER_MISSILE_SPEED/MISSILE_SPEED)+(k===2?-speed:0));
+  // Keep the paired bolts together until their actual X trajectories cross.
+  // Both visual effects share ONE crossing time, never separate centerline times.
+  const bolt={pos:launchPos,vel,age:0,smokeClock:0,homingOff:false,lastDistance:Math.hypot(...aim),hasClosed:false,missTimer:null,target,visualCrossTime:Infinity};
+  pairedBolts.push(bolt);
+  }
+  const closingSpeed=pairedBolts[0].vel[0]-pairedBolts[1].vel[0];
+  const separation=pairedBolts[1].pos[0]-pairedBolts[0].pos[0];
+  const sharedCrossTime=closingSpeed>1e-6?Math.max(0,separation/closingSpeed):Infinity;
+  for(const bolt of pairedBolts){bolt.visualCrossTime=sharedCrossTime;playerMissiles.push(bolt);}
+  lastPlayerRocketLaunch=performance.now();
+ }
+}
+for(let i=playerMissiles.length-1;i>=0;i--){
+ const m=playerMissiles[i];m.age+=dt;
+ const old=m.pos.slice();
+ const target=m.target;
+ if(target.destroyed){playerMissiles.splice(i,1);continue;}
+ const aim=target.pos.map((v,k)=>v-m.pos[k]);
+ const distance=Math.hypot(...aim);
+ if(distance<=10)m.homingOff=true;
+ // Straight flight: retain launch heading; no steering toward the moving target.
+ for(let k=0;k<3;k++)m.pos[k]+=m.vel[k]*dt;
+ // Rocket-only colored droplet trail. Enemy missiles keep their original smoke.
+ // Distribute droplets along the actual frame segment to avoid gaps at low FPS.
+ m.smokeClock+=dt;
+ const trailStep=.018;
+ const spawnCount=Math.min(12,Math.floor(m.smokeClock/trailStep));
+ m.smokeClock-=spawnCount*trailStep;
+ for(let n=0;n<spawnCount;n++){
+  // Emit only before the blue bolts cross; retain their physical trajectory.
+  if(m.age-dt+dt*n/Math.max(1,spawnCount)>=m.visualCrossTime)continue;
+  // Include the launch point in the existing moving trail, without a separate muzzle puff.
+  const f=n/spawnCount;
+  for(let k=0, droplets=1+(Math.random()<.5?1:0);k<droplets;k++){
+   const a=Math.random()*Math.PI*2,r=Math.random()*1.3;
+   rocketAfterglow.push({
+    pos:[old[0]+(m.pos[0]-old[0])*f+Math.cos(a)*r,
+         old[1]+(m.pos[1]-old[1])*f+Math.sin(a)*r,
+         old[2]+(m.pos[2]-old[2])*f],
+    vel:[m.vel[0]*.25+(Math.random()-.5)*3,m.vel[1]*.25+(Math.random()-.5)*3,m.vel[2]*.25-speed],
+    age:0,life:1.4+Math.random()*1.6,size:1.8+Math.random()*2.8,brightness:.58+Math.random()*.32
+   });
+  }
+ }
+ // Bound the total particle count for mobile performance.
+ if(rocketAfterglow.length>550)rocketAfterglow.splice(0,rocketAfterglow.length-550);
+ const newDistance=Math.hypot(...target.pos.map((v,k)=>v-m.pos[k]));
+ if(newDistance<=10)m.homingOff=true;
+ if(newDistance<m.lastDistance-.001)m.hasClosed=true;
+ else if(m.hasClosed&&newDistance>m.lastDistance+.001){
+  m.homingOff=true;
+  if(m.missTimer===null)m.missTimer=0;
+ }
+ if(m.missTimer!==null)m.missTimer+=dt;
+ m.lastDistance=newDistance;
+ const seg=m.pos.map((v,k)=>v-old[k]);
+ const lenSq=dot(seg,seg);
+ const t=lenSq>0?Math.max(0,Math.min(1,dot(target.pos.map((v,k)=>v-old[k]),seg)/lenSq)):0;
+ const closestPoint=old.map((v,k)=>v+seg[k]*t);
+ if(Math.hypot(...target.pos.map((v,k)=>v-closestPoint[k]))<(target.fortressPart?(target.kind==='core'?17:8):14)){
+  hitCount++;
+  spawnExplosion(m.pos,.6);
+  damageTarget(target,4,m.pos);
+  playerMissiles.splice(i,1);continue;
+ }
+ if(m.age<m.visualCrossTime){gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,missileModel(m,speed))));draw(playerEnergyBoltMesh);}
+ if((m.missTimer!==null&&m.missTimer>=.5)||m.age>12||newDistance>2500)playerMissiles.splice(i,1);
+}
+// Cannon shells fly straight after the sideways/upward burst, with no homing.
+for(let i=cannonShots.length-1;i>=0;i--){
+ const m=cannonShots[i],old=m.pos.slice();m.age+=dt;
+ for(let k=0;k<3;k++)m.pos[k]+=m.vel[k]*dt;
+ // Same lightweight, fading droplet trail as the player's energy bolt;
+ // only the tint is orange to match the cannon shell.
+ if(!m.noTrail){
+ m.smokeClock+=dt;
+ const trailStep=.036;
+ const spawnCount=Math.min(12,Math.floor(m.smokeClock/trailStep));
+ m.smokeClock-=spawnCount*trailStep;
+ for(let n=0;n<spawnCount;n++){
+  const f=(n+1)/(spawnCount+1);
+  const a=Math.random()*Math.PI*2,r=Math.random()*1.3;
+  rocketAfterglow.push({
+   pos:[old[0]+(m.pos[0]-old[0])*f+Math.cos(a)*r,
+        old[1]+(m.pos[1]-old[1])*f+Math.sin(a)*r,
+        old[2]+(m.pos[2]-old[2])*f],
+   vel:[m.vel[0]*.25+(Math.random()-.5)*3,m.vel[1]*.25+(Math.random()-.5)*3,m.vel[2]*.25-speed],
+   age:0,life:1.4+Math.random()*1.6,size:1.8+Math.random()*2.8,
+   brightness:.58+Math.random()*.32,cannonTrail:true
+  });
+ }
+ }
+ // Cannon shells use the same player-side roll slow-motion rule as missiles.
+ // The 3D shell body is 80 units long and 12 units wide.
+ // A hit changes only the player state; the shell continues its flight.
+ // Guard the jet state across enemy projectile contact. The first accepted
+ // hit may change it; every later contact is observational only.
+ const jetWasInvulnerable=performance.now()<playerInvulnerableUntil;
+ const jetPositionBefore=jetWasInvulnerable?pos.slice():null;
+ const jetImpulseBefore=jetWasInvulnerable?[hitVX,hitVY,hitVZ]:null;
+ handleEnemyProjectileContact(old,m.pos,m.vel,visualModel,m.gatlingShot?2:6,m.gatlingShot?35/3:35,m.gatlingShot?15:45,norm(m.vel),2.5,dt);
+ if(jetWasInvulnerable){
+  // An enemy projectile must never displace or re-impulse the jet.
+  for(let k=0;k<3;k++)pos[k]=jetPositionBefore[k];
+  hitVX=jetImpulseBefore[0];hitVY=jetImpulseBefore[1];hitVZ=jetImpulseBefore[2];
+ }
+
+ if(rocketAfterglow.length>550)rocketAfterglow.splice(0,rocketAfterglow.length-550);
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,missileModel(m,0))));draw(m.gatlingShot?gatlingShell:cannonShell);
+ if(m.age>5||Math.hypot(...m.pos.map((v,k)=>v-pos[k]))>2000)cannonShots.splice(i,1);
+}
+// Full-strength homing until 10 units; disable permanently at 10 units or after closest approach.
+for(let i=missiles.length-1;i>=0;i--){
+ const m=missiles[i];m.age+=dt;
+ const old=m.pos.slice();
+ const aim=pos.map((v,k)=>v-m.pos[k]);
+ const distance=Math.hypot(...aim);
+ // Once within 10 units, disable guidance permanently, even if distance later increases.
+ if(distance<=10)m.homingOff=true;
+ // A launch frame or an initially increasing distance must not disable homing.
+ if(!m.homingOff){
+  // Always pursue at full strength, but never exceed the physical turn rate.
+  // The existing 45-degree +Z flight cone is enforced separately.
+  const relative=m.vel.map((v,k)=>v+(k===2?speed:0));
+  const current=norm(relative);
+  const desired=norm(aim);
+  const angle=Math.acos(Math.max(-1,Math.min(1,dot(current,desired))));
+  const fraction=angle>1e-8?Math.min(1,MISSILE_TURN_RATE*dt/angle):1;
+  const turnAngle=angle*fraction;
+  const tangent=desired.map((v,k)=>v-current[k]*Math.cos(angle));
+  const tangentLength=Math.hypot(...tangent);
+  const turned=tangentLength>1e-8
+   ?current.map((v,k)=>v*Math.cos(turnAngle)+tangent[k]/tangentLength*Math.sin(turnAngle))
+   :current;
+  const limited=coneLimitedMissileVelocity(turned.map(v=>v*MISSILE_SPEED));
+  for(let k=0;k<3;k++)m.vel[k]=limited[k]+(k===2?-speed:0);
+ }
+ for(let k=0;k<3;k++)m.pos[k]+=m.vel[k]*dt;
+ const newDistance=Math.hypot(...pos.map((v,k)=>v-m.pos[k]));
+ // Only a confirmed approach followed by recession switches homing off.
+ // The player position has already advanced this frame, so use the prior
+ // completed-frame separation rather than comparing mismatched timestamps.
+ const tolerance=.001;
+ if(newDistance<=10)m.homingOff=true;
+ if(newDistance<m.lastDistance-tolerance)m.hasClosed=true;
+ else if(m.hasClosed&&newDistance>m.lastDistance+tolerance)m.homingOff=true;
+ m.lastDistance=newDistance;
+ // Shared player-side slow-motion check for all registered enemy projectiles.
+ // 3D missile: body radius 1.5, plus four fins reaching 4.2 units.
+ // Never consume the missile on aircraft contact: it flies through and remains visible.
+ // Guard the jet state across enemy projectile contact. The first accepted
+ // hit may change it; every later contact is observational only.
+ const jetWasInvulnerable=performance.now()<playerInvulnerableUntil;
+ const jetPositionBefore=jetWasInvulnerable?pos.slice():null;
+ const jetImpulseBefore=jetWasInvulnerable?[hitVX,hitVY,hitVZ]:null;
+ handleEnemyProjectileContact(old,m.pos,m.vel,visualModel,4.2,10,7.2,norm([m.vel[0],m.vel[1],m.vel[2]+speed]),4.5,dt);
+ if(jetWasInvulnerable){
+  // An enemy projectile must never displace or re-impulse the jet.
+  for(let k=0;k<3;k++)pos[k]=jetPositionBefore[k];
+  hitVX=jetImpulseBefore[0];hitVY=jetImpulseBefore[1];hitVZ=jetImpulseBefore[2];
+ }
+
+ // Draw the physical missile in the same depth-tested 3D pass as the aircraft.
+ gl.uniformMatrix4fv(VP,false,new Float32Array(mul(pv,missileModel(m,speed))));
+ draw(missileMesh);
+ const marker=projectWorld(m.pos);
+ m.ring.style.display=marker?'block':'none';
+ if(marker){m.ring.style.left=marker.x+'px';m.ring.style.top=marker.y+'px';}
+ // Launch warning: shrink from 40% of the viewport width to the existing 60px ring in 0.3s.
+ // Animate dimensions, not transform scale, so the 4px outline never thickens.
+ const ringProgress=Math.min(1,m.age/.3);
+ const ringEase=1-Math.pow(1-ringProgress,3);
+ const ringStart=Math.max(60,innerWidth*0.4);
+ const ringSize=ringStart+(60-ringStart)*ringEase;
+ m.ring.style.width=ringSize+'px';
+ m.ring.style.height=ringSize+'px';
+ // Thicker at launch (large ring), easing back to the original 4px at 60px.
+ const ringThickness=4+4*(ringSize-60)/Math.max(1,ringStart-60);
+ m.ring.style.borderWidth=ringThickness.toFixed(2)+'px';
+ // Stop once the missile has passed the camera, rather than enlarging a 2D sprite.
+ const cameraDepth=-(view[2]*m.pos[0]+view[6]*m.pos[1]+view[10]*m.pos[2]+view[14]);
+ const passedCamera=cameraDepth<.5;
+ m.smokeClock+=dt;
+ while(m.smokeClock>=.075){
+  m.smokeClock-=.075;
+  missileSmoke.push({pos:old.slice(),vel:[0,0,-speed],age:0,life:2.4+Math.random()*1.3});
+ }
+ // Do not remove missiles at the aircraft or camera plane before their close-up finishes.
+ if(passedCamera||m.age>9||Math.hypot(...m.pos.map((v,k)=>v-pos[k]))>1800){
+  m.ring.remove();missiles.splice(i,1);
+ }
+}
+for(let i=rocketAfterglow.length-1;i>=0;i--){
+ const d=rocketAfterglow[i];d.age+=dt;
+ for(let k=0;k<3;k++)d.pos[k]+=d.vel[k]*dt;
+ if(d.age>=d.life)rocketAfterglow.splice(i,1);
+}
+for(let i=missileSmoke.length-1;i>=0;i--){
+ const d=missileSmoke[i];d.age+=dt;
+ for(let k=0;k<3;k++)d.pos[k]+=d.vel[k]*dt;
+ if(d.age>=d.life)missileSmoke.splice(i,1);
+}
+fireCooldown-=dt;
+if(attraction>.08&&trackedEnemy&&Math.hypot(...trackedEnemy.pos.map((v,i)=>v-pos[i]))<=WEAPON_RANGE&&fireCooldown<=0){
+ fireCooldown=.095;
+ muzzleSide=-muzzleSide;
+ // Transform a gun port on the model using its current roll and pitch.
+ // Twin jet gun ports: moved inward symmetrically for a narrower firing spread.
+ // Local gun coordinates: x=+/-4.5, y=-0.62, z=-1.8 (forward).
+ const gun=[pos[0]+rr[0]*muzzleSide*4.5+uu[0]*(-.62)+fwd[0]*1.8,
+            pos[1]+rr[1]*muzzleSide*4.5+uu[1]*(-.62)+fwd[1]*1.8,
+            pos[2]+rr[2]*muzzleSide*4.5+uu[2]*(-.62)+fwd[2]*1.8];
+ const intercept=leadTarget(gun,trackedEnemy.pos,trackedEnemy.velocity,1600);
+ const direction=norm(intercept.map((v,i)=>v-gun[i]));
+ const el=document.createElement('div');el.className='shot';shotLayer.appendChild(el);
+ shots.push({el,pos:gun,dir:direction,age:0,speed:1600,enemy:trackedEnemy});
+}
+const tracerSegments=[];
+for(let i=shots.length-1;i>=0;i--){
+ const b=shots[i];b.age+=dt;
+ const oldPos=b.pos.slice();
+ const advance=b.speed*dt;
+ for(let k=0;k<3;k++)b.pos[k]+=b.dir[k]*advance;
+ const tail=projectWorld(oldPos),head=projectWorld(b.pos);
+ if(head&&tail){
+  const dx=head.x-tail.x,dy=head.y-tail.y;
+  b.el.style.display='block';
+  b.el.style.left=((head.x+tail.x)*.5)+'px';
+  b.el.style.top=((head.y+tail.y)*.5)+'px';
+  // Perspective-scale both bullet dimensions, down to a single screen pixel.
+  const bulletDistance=Math.hypot(b.pos[0]-cam[0],b.pos[1]-cam[1],b.pos[2]-cam[2]);
+  const bulletScale=Math.min(1,Math.max(0,80/Math.max(1,bulletDistance)));
+  b.el.style.width=Math.max(1,10*bulletScale)+'px';
+  b.el.style.height=Math.max(1,Math.min(104,2*Math.hypot(dx,dy))*bulletScale)+'px';
+  b.el.style.transform='translate(-50%,-50%) rotate('+(Math.atan2(dy,dx)*180/Math.PI-90)+'deg)';
+  // The old HUD tracer is hidden; its world-space counterpart is depth tested.
+  b.el.style.display='none';
+  tracerSegments.push([oldPos,b.pos.slice()]);
+ }else b.el.style.display='none';
+ // Segment-to-sphere hit test prevents fast projectiles tunneling through.
+ let hit=false;
+ if(b.enemy&&!b.enemy.destroyed){
+  const center=b.enemy.pos;
+  const seg=b.pos.map((v,k)=>v-oldPos[k]);
+  const lengthSq=dot(seg,seg);
+  const t=lengthSq>0?Math.max(0,Math.min(1,dot(center.map((v,k)=>v-oldPos[k]),seg)/lengthSq)):0;
+  const closestPoint=oldPos.map((v,k)=>v+seg[k]*t);
+  hit=Math.hypot(...center.map((v,k)=>v-closestPoint[k]))<(b.enemy.fortressPart?(b.enemy.kind==='core'?17:8):14);
+ }
+ if(hit){
+  hitCount++;
+  damageTarget(b.enemy,1,b.pos);
+  const impact=projectWorld(b.pos);
+  if(impact){
+   // Short, directional sparks scatter from each bullet impact instead of an expanding ring.
+   for(let k=0;k<9;k++){
+    const angle=Math.random()*Math.PI*2,velocity=75+Math.random()*155;
+    const fx=document.createElement('div');fx.className='hitSpark';shotLayer.appendChild(fx);
+    hitEffects.push({el:fx,age:0,x:impact.x,y:impact.y,vx:Math.cos(angle)*velocity,vy:Math.sin(angle)*velocity,angle:angle*180/Math.PI+90,life:.16+Math.random()*.16});
+   }
+  }
+ }
+ if(hit||b.age>1.8||!head){b.el.remove();shots.splice(i,1)}
+}
+drawWorldTracers(tracerSegments,pv);
+for(let i=hitEffects.length-1;i>=0;i--){
+ const fx=hitEffects[i];fx.age+=dt;
+ const t=Math.min(1,fx.age/fx.life),travel=fx.age*(1-.45*t);
+ fx.el.style.left=(fx.x+fx.vx*travel)+'px';fx.el.style.top=(fx.y+fx.vy*travel)+'px';
+ fx.el.style.opacity=Math.max(0,1-t);
+ fx.el.style.transform='translate(-50%,-50%) rotate('+fx.angle+'deg) scaleY('+(1-.65*t)+')';
+ if(t>=1){fx.el.remove();hitEffects.splice(i,1)}
+}
+// Wreck movement and smoke share the existing world-space particle system.
+updateFallingWrecks(dt,speed);
+// Damaged enemies continuously trail smoke until destroyed; particles linger briefly.
+for(const a of wingmen){
+ if(a.destroyed||!(a.hp>0&&a.hp<(a.fortress?FORTRESS_HP:a.formation?Math.ceil(ENEMY_HITS_TO_DESTROY/2):a.gatling?GATLING_HITS_TO_DESTROY:a.kamikaze?KAMIKAZE_HITS_TO_DESTROY:ENEMY_HITS_TO_DESTROY)))continue;
+ a.smokeClock=(a.smokeClock||0)+dt;
+ while(a.smokeClock>=.085){
+  a.smokeClock-=.085;
+  const size=12+Math.random()*13;
+  smokeParticles.push({pos:[a.pos[0]+(Math.random()-.5)*5,a.pos[1]+(Math.random()-.5)*4,a.pos[2]+8],vel:[(Math.random()-.5)*12,8+Math.random()*11,24+Math.random()*18],age:0,life:4.0+Math.random()*2.0,size});
+ }
+}
+// Destroyed fortress engines leave a drifting smoke wake behind the aircraft.
+// Unlike missile smoke, these particles move rearward in screen space rather than
+// inheriting the forward scroll speed and appearing to hover in place.
+for(const boss of wingmen){
+ if(!boss.fortress||boss.destroyed)continue;
+ for(const engine of boss.engines){
+  if(!engine.destroyed)continue;
+  engine.smokeClock+=dt;
+  while(engine.smokeClock>=.075){
+   engine.smokeClock-=.075;
+   const source=fortressPartPosition(boss,engine);
+   missileSmoke.push({pos:[source[0]+(Math.random()-.5)*3,source[1]+(Math.random()-.5)*3,source[2]+2],vel:[(Math.random()-.5)*18,6+Math.random()*12,70+Math.random()*100],age:0,life:2.4+Math.random()*1.3,fortressEngineSmoke:true});
+  }
+ }
+}
+for(let i=smokeParticles.length-1;i>=0;i--){
+ const d=smokeParticles[i];d.age+=dt;
+ for(let k=0;k<3;k++)d.pos[k]+=d.vel[k]*dt;
+ if(d.age>=d.life)smokeParticles.splice(i,1);
+}
+// Detonate on the player's actual knockback trajectory, never a separately predicted point.
+for(let i=delayedPlayerExplosions.length-1;i>=0;i--){
+ const e=delayedPlayerExplosions[i];
+ e.remaining-=dt;
+ if(e.remaining<=0){spawnPlayerHitExplosion(pos.slice(),e.power,2);delayedPlayerExplosions.splice(i,1);}
+}
+for(let i=blastEffects.length-1;i>=0;i--){
+ const b=blastEffects[i];b.age+=dt;if(!b.groundFixed)b.pos[2]-=speed*dt;
+ const t=b.age/b.life,screen=projectWorld(b.pos);
+ // Four color stages; update the CSS gradient only when the stage changes.
+ // Keep the original soft transparent outer edge and all explosion geometry.
+ const phase=b.age<.14?0:b.age<.27?1:b.age<.47?2:3;
+ if(phase!==b.colorPhase){
+  b.colorPhase=phase;
+  const gradients=[
+   'radial-gradient(circle,rgba(255,255,255,1) 0%,rgba(255,255,255,.98) 30%,rgba(255,252,237,.74) 50%,rgba(255,245,218,.12) 73%,rgba(255,245,218,0) 100%)',
+   'radial-gradient(circle,rgba(255,255,246,1) 0%,rgba(255,244,171,.96) 24%,rgba(255,202,83,.73) 45%,rgba(255,136,35,.13) 72%,rgba(255,136,35,0) 100%)',
+   'radial-gradient(circle,rgba(255,239,161,.96) 0%,rgba(255,169,42,.88) 24%,rgba(255,92,22,.60) 47%,rgba(177,48,22,.10) 73%,rgba(177,48,22,0) 100%)',
+   'radial-gradient(circle,rgba(244,129,49,.78) 0%,rgba(167,61,35,.51) 33%,rgba(89,53,47,.18) 63%,rgba(65,57,53,0) 100%)'
+  ];
+  b.fire.style.background=gradients[phase];
+ }
+ if(screen){
+  const size=(24+125*Math.sin(Math.min(1,t*1.25)*Math.PI*.75))*b.scale;
+  b.fire.style.display='block';b.fire.style.left=screen.x+'px';b.fire.style.top=screen.y+'px';b.fire.style.width=size+'px';b.fire.style.height=size+'px';
+  b.fire.style.opacity=String(Math.max(0,1-Math.pow(t,1.6)));
+  const radius=(20+195*t)*b.scale;
+  b.wave.style.display='block';b.wave.style.left=screen.x+'px';b.wave.style.top=screen.y+'px';b.wave.style.width=radius+'px';b.wave.style.height=radius+'px';b.wave.style.opacity=String(Math.max(0,.8*(1-t)*(1-t)));
+ }else{b.fire.style.display='none';b.wave.style.display='none';}
+ if(b.age>=b.life){b.fire.remove();b.wave.remove();blastEffects.splice(i,1);}
+}
+// Batch explosion fragments into a single canvas pass; preserve count, trajectory,
+// individual size/color, gravity, lifetime and the original opacity curve.
+const debrisDpr=Math.min(devicePixelRatio||1,1.7);
+const debrisWidth=Math.floor(innerWidth*debrisDpr),debrisHeight=Math.floor(innerHeight*debrisDpr);
+if(debrisCanvas.width!==debrisWidth||debrisCanvas.height!==debrisHeight){
+ debrisCanvas.width=debrisWidth;debrisCanvas.height=debrisHeight;
+}
+debrisCtx.setTransform(debrisDpr,0,0,debrisDpr,0,0);
+debrisCtx.clearRect(0,0,innerWidth,innerHeight);
+for(let i=debris.length-1;i>=0;i--){
+ const d=debris[i];d.age+=dt;
+ for(let k=0;k<3;k++)d.pos[k]+=d.vel[k]*dt;
+ // Keep explosion fragments in the same forward-scrolling world as missiles and smoke.
+ if(!d.groundFixed)d.pos[2]-=speed*dt;
+ d.vel[1]-=120*dt;
+ if(d.age>=d.life){debris.splice(i,1);continue;}
+ const screen=projectWorld(d.pos);
+ if(screen){
+  debrisCtx.globalAlpha=Math.max(0,1-d.age/d.life);
+  debrisCtx.fillStyle=d.color;
+  debrisCtx.fillRect(screen.x-d.size/2,screen.y-d.height/2,d.size,d.height);
+ }
+}
+debrisCtx.globalAlpha=1;
+updateDistantClouds(dt);
+drawDistantClouds(pv,view);
+renderWorldSmoke(pv,view);
+document.getElementById('status').innerHTML='撃墜 '+destroyedCount+' / 命中 '+hitCount+'<br>'+`高度 ${Math.round(pos[1])} m<br>速度 ${Math.round(speed*3.6)} km/h<br>左右 ${Math.round(pos[0])} / ±70 m`;
+// Show the actual motion source whenever an enemy missile is close to the jet.
+const nearestEnemyMissile=missiles.reduce((best,m)=>Math.min(best,Math.hypot(m.pos[0]-pos[0],m.pos[1]-pos[1],m.pos[2]-pos[2])),Infinity);
+const debugMotion=document.getElementById('motionDebug');
+const d=debugMotionSources;
+const fmt=(x,y)=>Math.round(Math.hypot(x,y));
+const auditCurrentState=Number(performance.now()<playerInvulnerableUntil)+'/'+acceptedPlayerHitCount+'/'+knockbackImpulseCount;
+if(auditCurrentState!==auditLastState){auditStore('状態 '+auditLastState+' → '+auditCurrentState);auditLastState=auditCurrentState;}
+if(performance.now()-auditLastFrameAt>3000){auditLastFrameAt=performance.now();try{sessionStorage.setItem('flightHitAudit441',JSON.stringify(auditRecord));}catch(e){}}
+debugMotion.textContent='被弾後 '+(performance.now()<playerInvulnerableUntil?'すり抜け中':'被弾可能')+' / 残り '+Math.max(0,((playerInvulnerableUntil-performance.now())/1000)).toFixed(1)+'秒 / ミサイル距離 '+(Number.isFinite(nearestEnemyMissile)?Math.round(nearestEnemyMissile):'--')+'\n操縦 '+fmt(d[0],d[1])+' 慣性 '+fmt(d[2],d[3])+' 自動 '+fmt(d[4],d[5])+' 被弾 '+fmt(d[6],d[7])+' Z '+Math.round(d[8])+'\n命中成立 '+acceptedPlayerHitCount+' / 衝撃発生 '+knockbackImpulseCount+'\n起動回数 '+auditBootNumber+' / 経過 '+Math.floor((performance.now()-auditBootAt)/1000)+'秒'+'\n履歴 '+auditRecord.events.slice(-5).join(' | ');
+document.getElementById('warn').textContent=warn;requestAnimationFrame(frame)}requestAnimationFrame(frame)})();
+</script><div id="motionDebug" style="display:none;position:fixed;bottom:88px;left:8px;z-index:99999;color:#fff;background:rgba(0,0,0,.78);padding:5px 8px;border-radius:5px;white-space:pre;font:12px monospace;pointer-events:none">計測準備中</div></body></html>
